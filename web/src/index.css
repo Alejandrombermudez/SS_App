@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #020c1b;
+}
+
+/* Avoids the iOS "double tap to zoom" delay + rubber-band scroll bleed on installed PWA */
+html {
+  touch-action: manipulation;
+  overscroll-behavior-y: none;
+}
+
+input, textarea, select {
+  font: inherit;
+}
