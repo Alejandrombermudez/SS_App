@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import InstallPrompt from '../components/InstallPrompt';
 
 export default function MainMenu() {
   const { role, user, signOutUser } = useAuth();
@@ -35,6 +36,10 @@ export default function MainMenu() {
         {role === 'admin' && (
           <MenuButton onClick={() => navigate('/services')}>Gestionar Servicios</MenuButton>
         )}
+
+        <div className="mt-8">
+          <InstallPrompt />
+        </div>
       </div>
     </div>
   );

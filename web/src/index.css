@@ -25,3 +25,11 @@ html {
 input, textarea, select {
   font: inherit;
 }
+
+/* iOS Safari hace zoom automático al enfocar un campo con fuente < 16px. Esta regla no está
+   en una @layer, así que gana sobre las utilidades de Tailwind como `text-sm`. */
+@media (pointer: coarse) {
+  input, textarea, select {
+    font-size: 16px;
+  }
+}

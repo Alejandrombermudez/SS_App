@@ -1,5 +1,6 @@
 import { Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import InstallPrompt from '../components/InstallPrompt';
 
 const LINES = [
   { x1: '0%', y1: '10%', x2: '80%', y2: '40%', width: 1, opacity: [0.3, 0.05] },
@@ -76,6 +77,10 @@ export default function LoginScreen() {
         </button>
 
         {error && <p className="mt-4 text-sm text-red-400">{error}</p>}
+
+        <div className="mt-8">
+          <InstallPrompt />
+        </div>
       </div>
     </div>
   );

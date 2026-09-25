@@ -17,8 +17,9 @@ export default defineConfig({
         description: 'Gestión de servicios, clientes y motocicletas del taller',
         theme_color: '#0A192F',
         background_color: '#020C1B',
+        lang: 'es',
+        id: '/',
         display: 'standalone',
-        orientation: 'portrait',
         start_url: '/',
         scope: '/',
         icons: [

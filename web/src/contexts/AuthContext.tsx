@@ -14,6 +14,24 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+// Devuelve null cuando el usuario solo cerró la ventana (no es un error que mostrar).
+function describeSignInError(err: unknown): string | null {
+  const code = (err as { code?: string })?.code ?? 'desconocido';
+  switch (code) {
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return null;
+    case 'auth/popup-blocked':
+      return 'El navegador bloqueó la ventana de Google. Permite las ventanas emergentes para este sitio e intenta de nuevo.';
+    case 'auth/unauthorized-domain':
+      return 'Este dominio no está autorizado en Firebase (Authentication > Settings > Authorized domains).';
+    case 'auth/network-request-failed':
+      return 'Sin conexión. Revisa tu internet e intenta de nuevo.';
+    default:
+      return `No se pudo iniciar sesión (${code}).`;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await signInWithPopup(auth, googleProvider);
     } catch (err) {
       console.warn('Google sign in failed', err);
-      setError('No se pudo iniciar sesión. Intenta de nuevo.');
+      setError(describeSignInError(err));
     }
   }
 
