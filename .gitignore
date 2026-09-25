@@ -21,3 +21,6 @@ local.properties
 /node_modules/
 firestore-debug.log
 firebase-debug.log
+
+# Facturas/documentos de ejemplo con datos de clientes
+/MISION_*.pdf

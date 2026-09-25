@@ -121,7 +121,7 @@ export default function ServicePickerDialog({ catalog, category, serviceType, al
                 const price = multiplier === null && isVariable(s.costType) ? null : priceForCategory(s, category || 'BAJO');
                 return (
                   <button
-                    key={s.itemCode}
+                    key={s.id}
                     type="button"
                     disabled={added}
                     onClick={() => toggle(s)}

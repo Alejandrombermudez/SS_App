@@ -1,6 +1,8 @@
 import type { Service } from '../types';
 
-// Mapa oficial de secciones y sus rangos de inicio (igual al de la app Android)
+// Secciones del catálogo y el inicio de su rango de códigos. Deben coincidir con las secciones
+// del catálogo vigente en Firestore (el de la app, no el de Access): así "Gestionar servicios"
+// ofrece las mismas secciones y numera cada servicio nuevo dentro de su rango.
 export const SECTIONS_MAP: Record<string, number> = {
   'Admisión': 1000,
   'Carenado': 2000,
@@ -10,12 +12,13 @@ export const SECTIONS_MAP: Record<string, number> = {
   'Iluminación': 6000,
   'Instrumentos': 7000,
   'Motor': 8000,
-  'Sis. Eléctrico': 9000,
+  'Sistema Eléctrico': 9000,
   'Transmisión': 10000,
   'Tren Del.': 11000,
-  'Tren Del./Tras.': 12000,
+  'Ruedas': 12000,
   'Tren Tras.': 13000,
   'General': 14000,
+  'Servicios': 15000,
 };
 
 export const GROUP_OPTIONS = ['Especifico', 'Elemental', 'Esencial', 'General'];
