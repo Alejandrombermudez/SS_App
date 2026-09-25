@@ -13,3 +13,11 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Bases de datos Access del negocio (datos reales de clientes): no versionar
+/DB/
+
+# Herramientas de Firebase (raíz del repo)
+/node_modules/
+firestore-debug.log
+firebase-debug.log

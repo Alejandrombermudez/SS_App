@@ -1,0 +1,200 @@
+rules_version = '2';
+
+// Reglas de Firestore del proyecto taller-ss (PWA web + app Android).
+//   Probar:    npm run rules:test      (emulador, ver firebase-tests/)
+//   Desplegar: npm run rules:deploy
+//
+// Quién puede entrar:
+//   - Dueños: siempre administradores. La lista debe coincidir con ADMIN_EMAILS en
+//     web/src/firebase.ts y con adminEmails en app/.../LoginActivity.kt.
+//   - users/{correo}: personal autorizado, role 'admin' o 'staff'. Solo los admins lo editan.
+//   - Cualquier otra cuenta de Google puede iniciar sesión, pero no ve ni escribe nada.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Identidad y roles ----------
+
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function isOwner() {
+      return signedIn() && myEmail() in ['alejucha@gmail.com', '831.ronald.leon@gmail.com'];
+    }
+
+    function myUserPath() {
+      return /databases/$(database)/documents/users/$(myEmail());
+    }
+
+    function isAdmin() {
+      return isOwner() || (signedIn() && exists(myUserPath()) && get(myUserPath()).data.role == 'admin');
+    }
+
+    function isStaff() {
+      return isOwner() || (signedIn() && exists(myUserPath()));
+    }
+
+    // ---------- Validación de campos ----------
+
+    // Campos que cambian en esta escritura. En create son todos; en update solo los modificados,
+    // así los documentos viejos con campos heredados se pueden seguir editando.
+    function changedKeys() {
+      return resource == null
+        ? request.resource.data.keys().toSet()
+        : request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function okString(field, max) {
+      return !(field in changedKeys())
+        || !(field in request.resource.data)
+        || (request.resource.data[field] is string && request.resource.data[field].size() <= max);
+    }
+
+    function isNumber(v) {
+      return v is int || v is float;
+    }
+
+    // ---------- Personal ----------
+
+    match /users/{email} {
+      allow read: if isAdmin() || (signedIn() && myEmail() == email);
+      allow create, update: if isAdmin()
+        && email == email.lower()
+        && request.resource.data.keys().hasOnly(['role', 'name', 'added_by', 'added_at'])
+        && request.resource.data.role in ['admin', 'staff'];
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Clientes (id = cédula / NIT) ----------
+
+    function validClient() {
+      return changedKeys().hasOnly(['name', 'phone', 'email', 'address', 'city', 'profession',
+                                    'instagram', 'birth_date', 'gender'])
+        && okString('name', 200) && okString('phone', 40) && okString('email', 200)
+        && okString('address', 300) && okString('city', 100) && okString('profession', 100)
+        && okString('instagram', 100) && okString('birth_date', 10) && okString('gender', 30);
+    }
+
+    match /clients/{clientId} {
+      allow read: if isStaff();
+      allow create: if isStaff() && clientId.matches('^[0-9A-Za-z.-]{3,20}$') && validClient();
+      allow update: if isStaff() && validClient();
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Vehículos (id = placa) ----------
+
+    function validVehicle() {
+      return changedKeys().hasOnly(['brand', 'line', 'model', 'color', 'cc', 'category', 'km',
+                                    'soat_date', 'tecno_date', 'client_id', 'license_image'])
+        && okString('brand', 60) && okString('line', 100) && okString('model', 10)
+        && okString('color', 60) && okString('cc', 10) && okString('km', 12)
+        && okString('soat_date', 10) && okString('tecno_date', 10)
+        && okString('client_id', 20) && okString('license_image', 2000)
+        && (!('category' in changedKeys()) || request.resource.data.category in ['', 'BAJO', 'MEDIO', 'ALTO']);
+    }
+
+    match /vehicles/{plate} {
+      allow read: if isStaff();
+      allow create: if isStaff() && plate.matches('^[0-9A-Z]{5,7}$') && validVehicle();
+      allow update: if isStaff() && validVehicle();
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Catálogo de servicios (id = código de ítem) ----------
+
+    match /services/{code} {
+      allow read: if isStaff();
+      allow create, update: if isAdmin()
+        && changedKeys().hasOnly(['item_code', 'section', 'description', 'cost_type', 'price',
+                                  'service_group', 'dependencies'])
+        && (!('price' in changedKeys()) || (isNumber(request.resource.data.price) && request.resource.data.price >= 0))
+        && (!('dependencies' in changedKeys()) || request.resource.data.dependencies is list)
+        && (!('cost_type' in changedKeys()) || request.resource.data.cost_type in ['Fijo', 'Variable']);
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Profesiones ----------
+
+    match /professions/{id} {
+      allow read: if isStaff();
+      allow create: if isStaff()
+        && request.resource.data.keys().hasOnly(['name'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80;
+      allow update, delete: if isAdmin();
+    }
+
+    // ---------- Misiones: cotizaciones y órdenes de servicio (id = número) ----------
+
+    function validOrder(d) {
+      return d.keys().hasOnly(['number', 'status', 'vehicle_plate', 'client_id', 'service_type',
+                               'entry_date', 'exit_date', 'km', 'initial_notes', 'final_notes',
+                               'discount_pct', 'services', 'parts', 'subtotal', 'discount',
+                               'services_total', 'parts_total', 'total', 'vehicle_category',
+                               'created_at', 'created_by', 'updated_at', 'updated_by', 'source'])
+        && d.number is int && d.number > 0
+        && d.status in ['Cotización', 'Orden de Servicio']
+        && d.vehicle_plate is string && d.vehicle_plate.size() > 0
+        && d.client_id is string
+        && d.service_type in ['Especifico', 'Elemental', 'Esencial', 'General']
+        && d.entry_date is string && d.exit_date is string
+        && isNumber(d.km) && d.km >= 0
+        && d.initial_notes is string && d.final_notes is string
+        && isNumber(d.discount_pct) && d.discount_pct >= 0 && d.discount_pct <= 100
+        && d.services is list && d.services.size() <= 300
+        && d.parts is list && d.parts.size() <= 300
+        && isNumber(d.subtotal) && isNumber(d.discount) && isNumber(d.services_total)
+        && isNumber(d.parts_total) && isNumber(d.total)
+        && d.services_total == d.subtotal - d.discount
+        && d.total == d.services_total + d.parts_total
+        && d.created_at is timestamp && d.updated_at is timestamp
+        && d.updated_by == myEmail();
+    }
+
+    function orderCounterAfter() {
+      return getAfter(/databases/$(database)/documents/counters/orders).data.last;
+    }
+
+    match /orders/{orderId} {
+      allow read: if isStaff();
+
+      // El personal solo crea el número que sigue en el contador, en la misma transacción.
+      // Los admins pueden crear cualquier número (migración del historial de Access).
+      allow create: if isStaff()
+        && validOrder(request.resource.data)
+        && orderId == string(request.resource.data.number)
+        && request.resource.data.created_by == myEmail()
+        && (isAdmin() || orderCounterAfter() == request.resource.data.number);
+
+      allow update: if isStaff()
+        && validOrder(request.resource.data)
+        && request.resource.data.number == resource.data.number
+        && request.resource.data.created_by == resource.data.created_by
+        && request.resource.data.created_at == resource.data.created_at;
+
+      allow delete: if isAdmin();
+    }
+
+    match /counters/{name} {
+      allow read: if isStaff();
+      allow create: if request.resource.data.keys().hasOnly(['last'])
+        && request.resource.data.last is int
+        && (isAdmin() || (isStaff() && request.resource.data.last == 1));
+      allow update: if request.resource.data.keys().hasOnly(['last'])
+        && request.resource.data.last is int
+        && (isAdmin() || (isStaff() && request.resource.data.last == resource.data.last + 1));
+    }
+
+    // ---------- Configuración del negocio (datos de la factura) ----------
+
+    match /settings/{doc} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+  }
+}

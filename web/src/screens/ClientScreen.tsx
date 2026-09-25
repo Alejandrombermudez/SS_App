@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { collection, doc, getDocs, onSnapshot, orderBy, query, setDoc, where } from 'firebase/firestore';
 import { ArrowLeft, ChevronDown, Lock, Plus, Search, Settings, X } from 'lucide-react';
 import { db } from '../firebase';
 import { clientConverter, vehicleConverter } from '../firestoreConverters';
-import { emptyClient, type Client, type Vehicle } from '../types';
+import { emptyClient, GENDER_OPTIONS, type Client, type Vehicle } from '../types';
 import { inputClass, labelClass } from '../components/formStyles';
 import AddProfessionDialog from './clients/AddProfessionDialog';
 import AddVehicleDialog from './clients/AddVehicleDialog';
@@ -34,13 +34,27 @@ export default function ClientScreen() {
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
   const [profession, setProfession] = useState('');
+  const [instagram, setInstagram] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [gender, setGender] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     const q = query(collection(db, 'clients')).withConverter(clientConverter);
     return onSnapshot(q, (snapshot) => setAllClients(snapshot.docs.map((d) => d.data())));
   }, []);
+
+  // Enlace directo desde una misión: /clients?client=CEDULA
+  useEffect(() => {
+    const wanted = searchParams.get('client');
+    if (!wanted || allClients.length === 0) return;
+    const found = allClients.find((c) => c.id === wanted);
+    if (found) selectClient(found);
+    setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allClients, searchParams]);
 
   useEffect(() => {
     const q = query(collection(db, 'professions'), orderBy('name'));
@@ -70,6 +84,9 @@ export default function ClientScreen() {
     setAddress(selected.address);
     setCity(selected.city);
     setProfession(selected.profession);
+    setInstagram(selected.instagram);
+    setBirthDate(selected.birthDate);
+    setGender(selected.gender);
     setIsNewClient(false);
     setSearchQuery('');
     setSaveError(null);
@@ -94,6 +111,9 @@ export default function ClientScreen() {
     setAddress('');
     setCity('');
     setProfession('');
+    setInstagram('');
+    setBirthDate('');
+    setGender('');
     setVehiclesList([]);
     setSaveError(null);
   }
@@ -109,20 +129,47 @@ export default function ClientScreen() {
     setAddress('');
     setCity('');
     setProfession('');
+    setInstagram('');
+    setBirthDate('');
+    setGender('');
   }
 
   async function handleSaveClient() {
-    if (!clientIdInput.trim()) {
+    const id = clientIdInput.trim().replace(/\s+/g, '');
+    if (!id) {
       setSaveError('La Cédula es obligatoria');
       return;
     }
+    if (isNewClient && !/^[0-9A-Za-z.-]{3,20}$/.test(id)) {
+      setSaveError('La cédula / NIT solo puede tener números, letras, puntos o guiones (3 a 20).');
+      return;
+    }
     setSaving(true);
-    const clientToSave: Client = { ...emptyClient(), id: clientIdInput, name, phone, email, address, city, profession };
-    await setDoc(doc(db, 'clients', clientIdInput).withConverter(clientConverter), clientToSave, { merge: true });
-    setSaving(false);
-    setSaveError(null);
-    setClient(clientToSave);
-    setIsNewClient(false);
+    const clientToSave: Client = {
+      ...emptyClient(),
+      id,
+      name,
+      phone,
+      email,
+      address,
+      city,
+      profession,
+      instagram,
+      birthDate,
+      gender,
+    };
+    try {
+      await setDoc(doc(db, 'clients', id).withConverter(clientConverter), clientToSave, { merge: true });
+      setSaveError(null);
+      setClient(clientToSave);
+      setClientIdInput(id);
+      setIsNewClient(false);
+    } catch (err) {
+      console.error(err);
+      setSaveError('No se pudo guardar el cliente. Revisa la conexión o tus permisos.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -280,6 +327,28 @@ export default function ClientScreen() {
               <div>
                 <label className={labelClass}>Dirección</label>
                 <input value={address} onChange={(e) => setAddress(e.target.value)} className={inputClass} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <div className="col-span-2 sm:col-span-1">
+                  <label className={labelClass}>Instagram</label>
+                  <input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@usuario" className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Fecha de nacimiento</label>
+                  <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Género</label>
+                  <select value={gender} onChange={(e) => setGender(e.target.value)} className={inputClass}>
+                    <option value="" className="bg-[#0A192F]">—</option>
+                    {[...new Set([...GENDER_OPTIONS, gender].filter(Boolean))].map((g) => (
+                      <option key={g} value={g} className="bg-[#0A192F]">
+                        {g}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 

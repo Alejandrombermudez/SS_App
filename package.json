@@ -1,0 +1,16 @@
+{
+  "name": "ss-app-firebase",
+  "private": true,
+  "description": "Firebase config (Firestore rules) for the SS_App web + Android apps",
+  "type": "module",
+  "scripts": {
+    "rules:test": "firebase emulators:exec --only firestore --project demo-ss-app \"vitest run --config firebase-tests/vitest.config.ts\"",
+    "rules:deploy": "firebase deploy --only firestore:rules --project taller-ss"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.19.0",
+    "firebase-tools": "^15.31.0",
+    "vitest": "^5.0.2"
+  }
+}

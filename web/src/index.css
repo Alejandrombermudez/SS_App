@@ -33,3 +33,30 @@ input, textarea, select {
     font-size: 16px;
   }
 }
+
+/* Impresión del documento de misión (Imprimir / Guardar como PDF desde el navegador). */
+@media print {
+  @page {
+    size: letter;
+    margin: 12mm;
+  }
+  html, body, #root, .invoice-screen {
+    background: #fff !important;
+    height: auto;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .invoice-screen > div {
+    padding: 0 !important;
+  }
+  .invoice-paper {
+    max-width: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { vehicleConverter } from '../../firestoreConverters';
 import Modal from '../../components/Modal';
 import { inputClass, labelClass } from '../../components/formStyles';
 import { emptyVehicle } from '../../types';
+import { normalizePlate } from '../../utils/format';
 import { calculateCategory, getCategoryColor } from '../../utils/vehicleUtils';
 
 export default function AddVehicleDialog({
@@ -27,19 +28,35 @@ export default function AddVehicleDialog({
   const [tecno, setTecno] = useState('');
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Categoría automática por cilindraje, salvo que se elija a mano (motos de mediana cilindrada
+  // que llevan trabajo de alta, por ejemplo).
+  const [manualCategory, setManualCategory] = useState<string | null>(null);
 
-  const category = useMemo(() => calculateCategory(cc), [cc]);
+  const autoCategory = useMemo(() => calculateCategory(cc), [cc]);
+  const category = manualCategory ?? autoCategory;
 
   async function handleSave() {
-    if (!plate.trim()) {
-      setErrorMsg('Placa obligatoria');
+    if (!/^[0-9A-Z]{5,7}$/.test(plate)) {
+      setErrorMsg('Escribe una placa válida (5 a 7 letras y números, ej. ABC12D).');
       return;
     }
     setSaving(true);
-    const vehicle = { ...emptyVehicle(clientId), plate, brand, line, model, color, cc, category, km, soatDate: soat, tecnoDate: tecno };
-    await setDoc(doc(db, 'vehicles', plate).withConverter(vehicleConverter), vehicle);
-    setSaving(false);
-    onSave();
+    setErrorMsg(null);
+    try {
+      const existing = await getDoc(doc(db, 'vehicles', plate));
+      if (existing.exists()) {
+        setErrorMsg(`La placa ${plate} ya está registrada (propietario ${existing.data().client_id}). Usa "Transferir" desde su ficha.`);
+        return;
+      }
+      const vehicle = { ...emptyVehicle(clientId), plate, brand, line, model, color, cc, category, km, soatDate: soat, tecnoDate: tecno };
+      await setDoc(doc(db, 'vehicles', plate).withConverter(vehicleConverter), vehicle);
+      onSave();
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('No se pudo guardar la moto. Revisa la conexión o tus permisos.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -50,7 +67,7 @@ export default function AddVehicleDialog({
         <div className="mt-4 space-y-3">
           <div>
             <label className={labelClass}>Placa (Obligatorio)</label>
-            <input value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase())} className={inputClass} />
+            <input value={plate} onChange={(e) => setPlate(normalizePlate(e.target.value))} maxLength={7} className={inputClass} />
           </div>
           <div className="flex gap-2">
             <div className="flex-1">
@@ -73,13 +90,26 @@ export default function AddVehicleDialog({
             </div>
           </div>
           <div>
-            <label className={labelClass}>Categoría (Auto)</label>
-            <input
-              value={category}
-              disabled
-              className={inputClass}
-              style={{ color: getCategoryColor(category) }}
-            />
+            <label className={labelClass}>
+              Categoría {manualCategory ? '(manual)' : '(automática por cilindraje)'}
+            </label>
+            <div className="flex gap-2">
+              {(['BAJO', 'MEDIO', 'ALTO'] as const).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setManualCategory(c === autoCategory ? null : c)}
+                  className="flex-1 rounded-md border py-2 text-sm font-bold"
+                  style={
+                    category === c
+                      ? { backgroundColor: getCategoryColor(c), borderColor: getCategoryColor(c), color: '#000' }
+                      : { borderColor: '#4B5563', color: getCategoryColor(c) }
+                  }
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
           </div>
           <div>
             <label className={labelClass}>Color</label>
@@ -91,12 +121,12 @@ export default function AddVehicleDialog({
           </div>
           <div className="flex gap-2">
             <div className="flex-1">
-              <label className={labelClass}>SOAT</label>
-              <input value={soat} onChange={(e) => setSoat(e.target.value)} className={inputClass} />
+              <label className={labelClass}>Vence SOAT</label>
+              <input type="date" value={soat} onChange={(e) => setSoat(e.target.value)} className={inputClass} />
             </div>
             <div className="flex-1">
-              <label className={labelClass}>Tecno</label>
-              <input value={tecno} onChange={(e) => setTecno(e.target.value)} className={inputClass} />
+              <label className={labelClass}>Vence Tecno</label>
+              <input type="date" value={tecno} onChange={(e) => setTecno(e.target.value)} className={inputClass} />
             </div>
           </div>
         </div>

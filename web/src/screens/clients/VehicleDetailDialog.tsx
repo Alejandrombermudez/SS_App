@@ -1,10 +1,15 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { deleteDoc, doc, setDoc, updateDoc } from 'firebase/firestore';
-import { ChevronDown, Send, Trash2, X } from 'lucide-react';
+import { ChevronDown, FilePlus2, Send, Trash2, X } from 'lucide-react';
 import { db } from '../../firebase';
 import { vehicleConverter } from '../../firestoreConverters';
+import { useAuth } from '../../contexts/AuthContext';
+import { useOrdersWhere } from '../../data/hooks';
 import Modal from '../../components/Modal';
+import { StatusChip } from '../../components/ui';
 import type { Client, Vehicle } from '../../types';
+import { formatCOP, formatDate, formatOrderNumber } from '../../utils/format';
 import { calculateCategory, getCategoryColor } from '../../utils/vehicleUtils';
 
 export default function VehicleDetailDialog({
@@ -31,20 +36,36 @@ export default function VehicleDetailDialog({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showTransferDialog, setShowTransferDialog] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { role } = useAuth();
+  const orders = useOrdersWhere('vehicle_plate', vehicle.plate);
 
   const categoryOptions = ['BAJO', 'MEDIO', 'ALTO'];
 
   async function handleSave() {
     setSaving(true);
+    setError(null);
     const updated: Vehicle = { ...vehicle, brand, line, model, color, cc, category, km, soatDate: soat, tecnoDate: tecno };
-    await setDoc(doc(db, 'vehicles', vehicle.plate).withConverter(vehicleConverter), updated, { merge: true });
-    setSaving(false);
-    onUpdate();
+    try {
+      await setDoc(doc(db, 'vehicles', vehicle.plate).withConverter(vehicleConverter), updated, { merge: true });
+      onUpdate();
+    } catch (err) {
+      console.error(err);
+      setError('No se pudieron guardar los cambios.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleDelete() {
-    await deleteDoc(doc(db, 'vehicles', vehicle.plate));
-    onUpdate();
+    try {
+      await deleteDoc(doc(db, 'vehicles', vehicle.plate));
+      onUpdate();
+    } catch (err) {
+      console.error(err);
+      setError('No se pudo eliminar la moto.');
+    }
   }
 
   return (
@@ -106,9 +127,11 @@ export default function VehicleDetailDialog({
         <hr className="my-4 border-gray-600/30" />
 
         <div className="grid grid-cols-2 gap-3">
-          <EditCell label="SOAT" value={soat} onChange={setSoat} />
-          <EditCell label="Tecno" value={tecno} onChange={setTecno} />
+          <EditCell label="Vence SOAT" value={soat} onChange={setSoat} type="date" />
+          <EditCell label="Vence Tecno" value={tecno} onChange={setTecno} type="date" />
         </div>
+
+        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
 
         <button
           type="button"
@@ -119,14 +142,53 @@ export default function VehicleDetailDialog({
           GUARDAR CAMBIOS
         </button>
 
+        {/* MISIONES DE ESTA MOTO */}
+        <div className="mt-6">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Misiones</p>
+            <button
+              type="button"
+              onClick={() => navigate(`/orders/new?plate=${vehicle.plate}`)}
+              className="flex items-center gap-1 text-sm font-medium text-[#E63946]"
+            >
+              <FilePlus2 className="h-4 w-4" /> Nueva cotización
+            </button>
+          </div>
+          <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
+            {orders.loading ? (
+              <p className="text-xs text-gray-500">Cargando…</p>
+            ) : orders.data.length === 0 ? (
+              <p className="text-xs text-gray-500">Sin misiones registradas.</p>
+            ) : (
+              orders.data.map((o) => (
+                <button
+                  key={o.number}
+                  type="button"
+                  onClick={() => navigate(`/orders/${o.number}`)}
+                  className="flex w-full items-center gap-2 rounded-md bg-black/20 px-3 py-2 text-left text-sm hover:bg-black/30"
+                >
+                  <span className="font-mono text-xs">Nº {formatOrderNumber(o.number)}</span>
+                  <StatusChip status={o.status} />
+                  <span className="ml-auto text-xs text-gray-400">{formatDate(o.entryDate)}</span>
+                  <span className="w-24 text-right font-semibold">{formatCOP(o.total)}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+
         <div className="mt-4 flex justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => setShowDeleteConfirm(true)}
-            className="flex items-center gap-1 rounded-md border border-[#E63946] px-3 py-2 text-xs text-[#E63946]"
-          >
-            <Trash2 className="h-4 w-4" /> Eliminar
-          </button>
+          {role === 'admin' ? (
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center gap-1 rounded-md border border-[#E63946] px-3 py-2 text-xs text-[#E63946]"
+            >
+              <Trash2 className="h-4 w-4" /> Eliminar
+            </button>
+          ) : (
+            <span />
+          )}
           <button
             type="button"
             onClick={() => setShowTransferDialog(true)}
@@ -158,16 +220,19 @@ function EditCell({
   value,
   onChange,
   numeric = false,
+  type = 'text',
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   numeric?: boolean;
+  type?: 'text' | 'date';
 }) {
   return (
     <div>
       <label className="mb-1 block text-[11px] text-gray-400">{label}</label>
       <input
+        type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         inputMode={numeric ? 'numeric' : 'text'}

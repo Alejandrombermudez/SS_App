@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
-import { auth, googleProvider, ADMIN_EMAILS } from '../firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { auth, db, googleProvider, ADMIN_EMAILS } from '../firebase';
 import type { UserRole } from '../types';
 
 interface AuthContextValue {
@@ -34,18 +35,42 @@ function describeSignInError(err: unknown): string | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
+  // Rol leído de users/{correo}; undefined mientras llega el primer snapshot.
+  const [staffRole, setStaffRole] = useState<UserRole | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
-      setLoading(false);
+      setAuthLoading(false);
     });
     return unsubscribe;
   }, []);
 
-  const role: UserRole = user && ADMIN_EMAILS.includes(user.email ?? '') ? 'admin' : 'user';
+  const email = user?.email?.toLowerCase() ?? '';
+  const isOwner = ADMIN_EMAILS.includes(email);
+
+  // Mismo criterio que firestore.rules: dueño, o documento en users/ con su rol.
+  // Se escucha en vivo para que quitar a alguien del personal le cierre el acceso de inmediato.
+  useEffect(() => {
+    if (!email || isOwner) {
+      setStaffRole(undefined);
+      return;
+    }
+    setStaffRole(undefined);
+    return onSnapshot(
+      doc(db, 'users', email),
+      (snap) => {
+        const r = snap.data()?.role;
+        setStaffRole(r === 'admin' || r === 'staff' ? r : 'none');
+      },
+      () => setStaffRole('none'),
+    );
+  }, [email, isOwner]);
+
+  const role: UserRole = !user ? 'none' : isOwner ? 'admin' : (staffRole ?? 'none');
+  const loading = authLoading || (!!user && !isOwner && staffRole === undefined);
 
   async function signInWithGoogle() {
     setError(null);
