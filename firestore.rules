@@ -8,6 +8,8 @@ rules_version = '2';
 //   - Dueños: siempre administradores. La lista debe coincidir con ADMIN_EMAILS en
 //     web/src/firebase.ts y con adminEmails en app/.../LoginActivity.kt.
 //   - users/{correo}: personal autorizado, role 'admin' o 'staff'. Solo los admins lo editan.
+//   - client_accounts/{correo}: clientes del taller. Cada correo apunta a una cédula y ese
+//     cliente solo puede LEER su ficha, sus motos y sus misiones (portal de clientes).
 //   - Cualquier otra cuenta de Google puede iniciar sesión, pero no ve ni escribe nada.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -36,6 +38,19 @@ service cloud.firestore {
 
     function isStaff() {
       return isOwner() || (signedIn() && exists(myUserPath()));
+    }
+
+    function myClientPath() {
+      return /databases/$(database)/documents/client_accounts/$(myEmail());
+    }
+
+    function isClientAccount() {
+      return signedIn() && exists(myClientPath());
+    }
+
+    // El cliente dueño de `clientId` (cédula), según su correo de Google.
+    function isClientOf(clientId) {
+      return isClientAccount() && get(myClientPath()).data.client_id == clientId;
     }
 
     // ---------- Validación de campos ----------
@@ -79,8 +94,20 @@ service cloud.firestore {
         && okString('instagram', 100) && okString('birth_date', 10) && okString('gender', 30);
     }
 
+    // ---------- Acceso de clientes al portal (id = correo en minúsculas) ----------
+
+    match /client_accounts/{email} {
+      allow read: if isStaff() || (signedIn() && myEmail() == email);
+      allow create, update: if isStaff()
+        && email == email.lower()
+        && request.resource.data.keys().hasOnly(['client_id'])
+        && request.resource.data.client_id is string
+        && existsAfter(/databases/$(database)/documents/clients/$(request.resource.data.client_id));
+      allow delete: if isStaff();
+    }
+
     match /clients/{clientId} {
-      allow read: if isStaff();
+      allow read: if isStaff() || isClientOf(clientId);
       allow create: if isStaff() && clientId.matches('^[0-9A-Za-z.-]{3,20}$') && validClient();
       allow update: if isStaff() && validClient();
       allow delete: if isAdmin();
@@ -99,7 +126,7 @@ service cloud.firestore {
     }
 
     match /vehicles/{plate} {
-      allow read: if isStaff();
+      allow read: if isStaff() || isClientOf(resource.data.client_id);
       allow create: if isStaff() && plate.matches('^[0-9A-Z]{5,7}$') && validVehicle();
       allow update: if isStaff() && validVehicle();
       allow delete: if isAdmin();
@@ -161,7 +188,7 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow read: if isStaff();
+      allow read: if isStaff() || isClientOf(resource.data.client_id);
 
       // El personal solo crea el número que sigue en el contador, en la misma transacción.
       // Los admins pueden crear cualquier número (migración del historial de Access).
@@ -193,7 +220,7 @@ service cloud.firestore {
     // ---------- Configuración del negocio (datos de la factura) ----------
 
     match /settings/{doc} {
-      allow read: if isStaff();
+      allow read: if isStaff() || isClientAccount();
       allow write: if isAdmin();
     }
   }

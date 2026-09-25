@@ -7,6 +7,8 @@ import type { UserRole } from '../types';
 interface AuthContextValue {
   user: User | null;
   role: UserRole;
+  /** Cédula del cliente, cuando role === 'client'. */
+  clientId: string | null;
   loading: boolean;
   error: string | null;
   signInWithGoogle: () => Promise<void>;
@@ -36,8 +38,10 @@ function describeSignInError(err: unknown): string | null {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  // Rol leído de users/{correo}; undefined mientras llega el primer snapshot.
+  // Rol leído de users/{correo} y enlace de client_accounts/{correo}; undefined mientras llega
+  // el primer snapshot de cada uno.
   const [staffRole, setStaffRole] = useState<UserRole | undefined>(undefined);
+  const [clientLink, setClientLink] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -69,8 +73,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
   }, [email, isOwner]);
 
-  const role: UserRole = !user ? 'none' : isOwner ? 'admin' : (staffRole ?? 'none');
-  const loading = authLoading || (!!user && !isOwner && staffRole === undefined);
+  // Cualquier otra cuenta puede ser un cliente del taller: su correo apunta a una cédula.
+  useEffect(() => {
+    if (!email || isOwner) {
+      setClientLink(undefined);
+      return;
+    }
+    setClientLink(undefined);
+    return onSnapshot(
+      doc(db, 'client_accounts', email),
+      (snap) => setClientLink((snap.data()?.client_id as string | undefined) ?? null),
+      () => setClientLink(null),
+    );
+  }, [email, isOwner]);
+
+  const isStaff = staffRole === 'admin' || staffRole === 'staff';
+  const role: UserRole = !user
+    ? 'none'
+    : isOwner
+      ? 'admin'
+      : isStaff
+        ? staffRole!
+        : clientLink
+          ? 'client'
+          : 'none';
+  const clientId = role === 'client' ? clientLink ?? null : null;
+  const loading = authLoading || (!!user && !isOwner && (staffRole === undefined || clientLink === undefined));
 
   async function signInWithGoogle() {
     setError(null);
@@ -87,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, error, signInWithGoogle, signOutUser }}>
+    <AuthContext.Provider value={{ user, role, clientId, loading, error, signInWithGoogle, signOutUser }}>
       {children}
     </AuthContext.Provider>
   );

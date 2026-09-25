@@ -41,7 +41,9 @@ export interface PlanItem {
   note?: string;
 }
 
-export type CollectionKey = 'clients' | 'vehicles' | 'services' | 'orders' | 'professions';
+export type CollectionKey = 'clients' | 'vehicles' | 'services' | 'orders' | 'professions' | 'client_accounts';
+
+export const COLLECTION_KEYS: CollectionKey[] = ['clients', 'vehicles', 'services', 'orders', 'professions', 'client_accounts'];
 
 export interface ImportPlan {
   clients: PlanItem[];
@@ -49,6 +51,7 @@ export interface ImportPlan {
   services: PlanItem[];
   orders: PlanItem[];
   professions: PlanItem[];
+  client_accounts: PlanItem[]; // correo del cliente -> su cédula (acceso al portal)
   counterTo: number | null; // nuevo valor de counters/orders, si hay que subirlo
   totalsFixed: { number: number; access: number; computed: number }[];
 }
@@ -69,6 +72,22 @@ function stable(v: unknown): string {
 
 const same = (a: unknown, b: unknown) => stable(a) === stable(b);
 
+// Valores de relleno de Access (el cliente no tenía el dato). Si ya se migraron, se vacían.
+// Deben coincidir con PLACEHOLDER_* en tools/access-export/export_access.py.
+// Importante por seguridad: un correo inventado que exista en Gmail le daría a un extraño
+// acceso al portal de ese cliente, así que nunca se enlaza.
+const PLACEHOLDER_LOCAL_PARTS = ['abc', 'asd', 'asdf', 'qwe', 'xxx', 'test', 'prueba', 'na', 'no', 'ninguno', 'sincorreo'];
+
+export function isPlaceholderEmail(email: string): boolean {
+  const [local, domain] = email.trim().toLowerCase().split('@');
+  return !domain || PLACEHOLDER_LOCAL_PARTS.includes(local) || domain === 'google.com';
+}
+
+export const PLACEHOLDERS: Record<string, (v: string) => boolean> = {
+  email: (v) => v !== '' && isPlaceholderEmail(v),
+  instagram: (v) => v.trim().toLowerCase() === '@abc',
+};
+
 /**
  * Compara un registro de Access con el existente. Solo se tocan los campos que Access conoce y
  * nunca se borra un valor con uno vacío: lo que se haya agregado en la app (dirección, color,
@@ -78,7 +97,10 @@ function diff(id: string, label: string, access: Record<string, unknown>, existi
   if (!existing) return { id, label, kind: 'new', changes: [], data: { ...defaults, ...access } };
   const data: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(access)) {
-    if (v === '' || v === null || v === undefined) continue;
+    if (v === '' || v === null || v === undefined) {
+      if (PLACEHOLDERS[k]?.(String(existing[k] ?? ''))) data[k] = '';
+      continue;
+    }
     if (!same(existing[k], v)) data[k] = v;
   }
   const changes = Object.keys(data);
@@ -87,7 +109,15 @@ function diff(id: string, label: string, access: Record<string, unknown>, existi
 
 export function buildPlan(
   exp: AccessExport,
-  existing: { clients: Existing; vehicles: Existing; services: Existing; orders: Existing; professions: Set<string>; counter: number },
+  existing: {
+    clients: Existing;
+    vehicles: Existing;
+    services: Existing;
+    orders: Existing;
+    professions: Set<string>;
+    clientAccounts: Existing;
+    counter: number;
+  },
 ): ImportPlan {
   const clients = exp.clients.map((c) => {
     const { id, ...fields } = c;
@@ -157,6 +187,21 @@ export function buildPlan(
     }),
   );
 
+  // Acceso al portal: cada correo apunta a una sola cédula (el primero si se repite).
+  const accountIds = new Set<string>();
+  const client_accounts: PlanItem[] = [];
+  for (const c of exp.clients) {
+    const email = String(c.email ?? '').trim().toLowerCase();
+    if (!email || isPlaceholderEmail(email) || accountIds.has(email)) continue;
+    accountIds.add(email);
+    const current = existing.clientAccounts.get(email);
+    const data = { client_id: c.id };
+    const label = `${email} → ${c.name || c.id}`;
+    if (!current) client_accounts.push({ id: email, label, kind: 'new', changes: [], data });
+    else if (current.client_id === c.id) client_accounts.push({ id: email, label, kind: 'same', changes: [], data });
+    else client_accounts.push({ id: email, label, kind: 'update', changes: ['client_id'], data });
+  }
+
   const maxNumber = Math.max(0, ...exp.orders.map((o) => o.number));
   return {
     clients,
@@ -164,6 +209,7 @@ export function buildPlan(
     services,
     orders,
     professions,
+    client_accounts,
     counterTo: maxNumber > existing.counter ? maxNumber : null,
     totalsFixed,
   };
@@ -193,32 +239,37 @@ export const COLLECTION_LABELS: Record<CollectionKey, string> = {
   services: 'Catálogo de servicios',
   orders: 'Misiones',
   professions: 'Profesiones',
+  client_accounts: 'Acceso de clientes al portal',
 };
 
+/** 'none' = no tocar la colección; 'new' = solo crear lo que falta; 'all' = crear y actualizar. */
+export type ImportMode = 'none' | 'new' | 'all';
+
 /** Escrituras a realizar, agrupadas y en orden (primero clientes/motos, luego misiones y contador). */
-export function planWrites(
-  plan: ImportPlan,
-  updateExisting: Record<CollectionKey, boolean>,
-  email: string,
-): [string, WriteOp[]][] {
+export function planWrites(plan: ImportPlan, modes: Record<CollectionKey, ImportMode>, email: string): [string, WriteOp[]][] {
   const groups: [string, WriteOp[]][] = [];
+  const creates = (k: CollectionKey) => modes[k] !== 'none';
+  const updates = (k: CollectionKey) => modes[k] === 'all';
 
   for (const key of ['clients', 'vehicles', 'services'] as const) {
     const ops: WriteOp[] = [];
     for (const item of plan[key]) {
-      if (item.kind === 'new') ops.push({ collection: key, id: item.id, data: item.data, merge: false });
-      if (item.kind === 'update' && updateExisting[key]) ops.push({ collection: key, id: item.id, data: item.data, merge: true });
+      if (item.kind === 'new' && creates(key)) ops.push({ collection: key, id: item.id, data: item.data, merge: false });
+      if (item.kind === 'update' && updates(key)) ops.push({ collection: key, id: item.id, data: item.data, merge: true });
     }
     groups.push([COLLECTION_LABELS[key], ops]);
   }
 
   groups.push([
     COLLECTION_LABELS.professions,
-    plan.professions.filter((p) => p.kind === 'new').map((p) => ({ collection: 'professions', id: null, data: p.data, merge: false })),
+    creates('professions')
+      ? plan.professions.filter((p) => p.kind === 'new').map((p) => ({ collection: 'professions', id: null, data: p.data, merge: false }))
+      : [],
   ]);
 
   const orderOps: WriteOp[] = [];
   for (const item of plan.orders) {
+    if (!creates('orders')) break;
     if (item.kind === 'new') {
       const entry = String(item.data.entry_date || '');
       orderOps.push({
@@ -234,16 +285,33 @@ export function planWrites(
           updated_by: email,
         },
       });
-    } else if (item.kind === 'update' && updateExisting.orders) {
+    } else if (item.kind === 'update' && updates('orders')) {
       orderOps.push({ collection: 'orders', id: item.id, merge: true, data: { ...item.data, updated_at: SERVER_TIME, updated_by: email } });
     }
   }
   groups.push([COLLECTION_LABELS.orders, orderOps]);
 
-  if (plan.counterTo !== null) {
+  const accountOps: WriteOp[] = [];
+  for (const item of plan.client_accounts) {
+    if ((item.kind === 'new' && creates('client_accounts')) || (item.kind === 'update' && updates('client_accounts'))) {
+      accountOps.push({ collection: 'client_accounts', id: item.id, data: item.data, merge: false });
+    }
+  }
+  groups.push([COLLECTION_LABELS.client_accounts, accountOps]);
+
+  if (plan.counterTo !== null && creates('orders')) {
     groups.push(['Contador de misiones', [{ collection: 'counters', id: 'orders', data: { last: plan.counterTo }, merge: false }]]);
   }
   return groups;
+}
+
+/**
+ * Tamaño de lote por colección. Firestore permite máximo 500 escrituras por lote, pero las
+ * reglas solo pueden leer 20 documentos distintos por lote: los enlaces de clientes verifican
+ * que la cédula exista (existsAfter), así que van en lotes pequeños.
+ */
+export function batchSizeFor(collection: string): number {
+  return collection === 'client_accounts' ? 10 : 400;
 }
 
 /** Reemplaza los marcadores por los valores reales del SDK que ejecuta la escritura. */

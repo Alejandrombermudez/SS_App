@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Download, Printer, Share2 } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 import { useBusinessSettings, useClient, useOrder, useVehicle } from '../../data/hooks';
 import { CenteredMessage, ScreenHeader, Spinner } from '../../components/ui';
 import { formatOrderNumber } from '../../utils/format';
@@ -33,7 +34,9 @@ export default function InvoiceScreen() {
     [order.data, client.data, vehicle.data, business.data],
   );
 
-  const back = () => navigate(`/orders/${id}`);
+  const { role } = useAuth();
+  // El cliente vuelve a su portal; el personal, al editor de la misión.
+  const back = () => navigate(role === 'client' ? '/' : `/orders/${id}`);
 
   if (order.loading || vehicle.loading || client.loading) {
     return (

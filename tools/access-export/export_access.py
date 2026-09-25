@@ -98,7 +98,38 @@ def part_type(raw: str, description: str, order_id: int) -> str:
     return guess
 
 
-def export(db_path: str) -> dict:
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$")
+
+# Valores de relleno que se usaban en Access cuando el cliente no tenía el dato.
+# Deben coincidir con PLACEHOLDERS en web/src/screens/settings/importPlan.ts.
+# Por seguridad un correo inventado nunca se usa: si existe en Gmail, un extraño vería el portal
+# de ese cliente. Debe coincidir con isPlaceholderEmail en importPlan.ts.
+PLACEHOLDER_LOCAL_PARTS = {"abc", "asd", "asdf", "qwe", "xxx", "test", "prueba", "na", "no", "ninguno", "sincorreo"}
+PLACEHOLDER_INSTAGRAM = {"@abc"}
+
+
+def is_placeholder_email(email: str) -> bool:
+    local, _, domain = email.partition("@")
+    return not domain or local in PLACEHOLDER_LOCAL_PARTS or domain == "google.com"
+
+
+def clean_email(raw: str, client_id: str) -> str:
+    """El 'Google ID' de Access es la cuenta con la que el cliente entra a su portal."""
+    if not raw:
+        return ""
+    first = raw.split("\n")[0].strip().lower().replace(" ", "")
+    fixed = re.sub(r"@gmailcom$", "@gmail.com", first)
+    if is_placeholder_email(fixed):
+        return ""
+    if not EMAIL_RE.match(fixed):
+        warnings.append(f"Cliente {client_id}: 'Google ID' no es un correo válido ({raw!r}), queda vacío")
+        return ""
+    if fixed != raw.strip().lower():
+        warnings.append(f"Cliente {client_id}: correo corregido de {raw!r} a {fixed!r}")
+    return fixed
+
+
+def export(db_path: str, source_name: str) -> dict:
     conn = pyodbc.connect(
         "Driver={Microsoft Access Driver (*.mdb, *.accdb)};" f"Dbq={db_path};ReadOnly=1;",
         autocommit=True,
@@ -106,18 +137,23 @@ def export(db_path: str) -> dict:
     cur = conn.cursor()
 
     clients = []
+    seen_emails: dict[str, str] = {}
     for r in rows(cur, "SELECT * FROM [1_Clientes]"):
         cid = id_str(r["Cedula"])
-        google = text(r["Google ID"]).lower()
-        email = google if "@" in google else ""
-        if google and not email:
-            warnings.append(f"Cliente {cid}: 'Google ID' sin @ ({google}), no se usa como correo")
+        email = clean_email(text(r["Google ID"]), cid)
+        if email and email in seen_emails:
+            warnings.append(
+                f"Clientes {seen_emails[email]} y {cid} tienen el mismo correo ({email}): "
+                f"el portal de clientes queda enlazado al primero"
+            )
+        elif email:
+            seen_emails[email] = cid
         clients.append({
             "id": cid,
             "name": re.sub(r"\s+", " ", f"{text(r['Nombre'])} {text(r['Apellido'])}").strip(),
             "phone": id_str(r["Telefono"]),
             "email": email,
-            "instagram": text(r["Instagram"]),
+            "instagram": "" if text(r["Instagram"]).lower() in PLACEHOLDER_INSTAGRAM else text(r["Instagram"]),
             "birth_date": iso(r["Nacimiento"]),
             "gender": text(r["Genero"]),
             "profession": text(r["Profesion"]),
@@ -216,7 +252,7 @@ def export(db_path: str) -> dict:
 
     return {
         "exported_at": dt.datetime.now().isoformat(timespec="seconds"),
-        "source": os.path.basename(db_path),
+        "source": source_name,
         "clients": clients,
         "vehicles": vehicles,
         "services": services,
@@ -233,7 +269,7 @@ def main() -> None:
     try:
         copy = os.path.join(tmpdir, "copy.accdb")
         shutil.copyfile(src, copy)
-        data = export(copy)
+        data = export(copy, os.path.basename(src))
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 

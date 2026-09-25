@@ -8,24 +8,29 @@ import { ScreenHeader, Section, Spinner } from '../../components/ui';
 import { formatCOP } from '../../utils/format';
 import {
   buildPlan,
+  batchSizeFor,
+  COLLECTION_KEYS,
   COLLECTION_LABELS as LABELS,
   count,
   materialize,
   planWrites,
   type AccessExport,
   type CollectionKey,
+  type ImportMode,
   type ImportPlan,
   type PlanItem,
   type WriteOp,
 } from './importPlan';
 
-// El catálogo se administra en la app ("Gestionar Servicios"): por defecto no se pisan sus precios.
-const DEFAULT_UPDATE: Record<CollectionKey, boolean> = {
-  clients: true,
-  vehicles: true,
-  services: false,
-  orders: true,
-  professions: false,
+// El catálogo se administra en la app ("Gestionar Servicios") y su numeración no coincide con la
+// de Access: por defecto no se toca. El historial no depende de él (cada línea guarda su copia).
+const DEFAULT_MODES: Record<CollectionKey, ImportMode> = {
+  clients: 'all',
+  vehicles: 'all',
+  services: 'none',
+  orders: 'all',
+  professions: 'new',
+  client_accounts: 'all',
 };
 
 type Stage = 'idle' | 'analyzing' | 'ready' | 'importing' | 'done' | 'error';
@@ -37,7 +42,7 @@ export default function ImportScreen() {
   const [message, setMessage] = useState<string | null>(null);
   const [exp, setExp] = useState<AccessExport | null>(null);
   const [plan, setPlan] = useState<ImportPlan | null>(null);
-  const [updateExisting, setUpdateExisting] = useState(DEFAULT_UPDATE);
+  const [modes, setModes] = useState(DEFAULT_MODES);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [result, setResult] = useState<string[]>([]);
 
@@ -52,12 +57,13 @@ export default function ImportScreen() {
     setExp(data);
     setStage('analyzing');
     try {
-      const [clients, vehicles, services, orders, professions, counter] = await Promise.all([
+      const [clients, vehicles, services, orders, professions, accounts, counter] = await Promise.all([
         getDocs(collection(db, 'clients')),
         getDocs(collection(db, 'vehicles')),
         getDocs(collection(db, 'services')),
         getDocs(collection(db, 'orders')),
         getDocs(collection(db, 'professions')),
+        getDocs(collection(db, 'client_accounts')),
         getDoc(doc(db, 'counters', 'orders')),
       ]);
       const toMap = (snap: typeof clients) => new Map(snap.docs.map((d) => [d.id, d.data()]));
@@ -68,6 +74,7 @@ export default function ImportScreen() {
           services: toMap(services),
           orders: toMap(orders),
           professions: new Set(professions.docs.map((d) => String(d.data().name ?? '').trim().toLowerCase())),
+          clientAccounts: toMap(accounts),
           counter: Number(counter.data()?.last) || 0,
         }),
       );
@@ -100,7 +107,7 @@ export default function ImportScreen() {
 
   async function runImport() {
     if (!plan || !user?.email) return;
-    const groups = planWrites(plan, updateExisting, user.email.toLowerCase());
+    const groups = planWrites(plan, modes, user.email.toLowerCase());
     const sdk = { serverTimestamp, fromDate: (d: Date) => Timestamp.fromDate(d) };
     const refOf = (op: WriteOp) => (op.id ? doc(db, op.collection, op.id) : doc(collection(db, op.collection)));
 
@@ -111,15 +118,16 @@ export default function ImportScreen() {
     let done = 0;
     try {
       for (const [label, ops] of groups) {
-        for (let i = 0; i < ops.length; i += 400) {
+        const size = batchSizeFor(ops[0]?.collection ?? '');
+        for (let i = 0; i < ops.length; i += size) {
           const batch = writeBatch(db);
-          for (const op of ops.slice(i, i + 400)) {
+          for (const op of ops.slice(i, i + size)) {
             const data = materialize(op.data, sdk);
             if (op.merge) batch.set(refOf(op), data, { merge: true });
             else batch.set(refOf(op), data);
           }
           await batch.commit();
-          done += Math.min(400, ops.length - i);
+          done += Math.min(size, ops.length - i);
           setProgress({ done, total });
         }
         if (ops.length) summary.push(`${label}: ${ops.length} escrito${ops.length === 1 ? '' : 's'}`);
@@ -135,10 +143,10 @@ export default function ImportScreen() {
   }
 
   const pending = plan
-    ? (['clients', 'vehicles', 'services', 'orders', 'professions'] as CollectionKey[]).reduce(
-        (n, k) => n + count(plan[k], 'new') + (updateExisting[k] ? count(plan[k], 'update') : 0),
+    ? COLLECTION_KEYS.reduce(
+        (n, k) => n + (modes[k] === 'none' ? 0 : count(plan[k], 'new')) + (modes[k] === 'all' ? count(plan[k], 'update') : 0),
         0,
-      ) + (plan.counterTo !== null ? 1 : 0)
+      ) + (plan.counterTo !== null && modes.orders !== 'none' ? 1 : 0)
     : 0;
 
   return (
@@ -191,13 +199,13 @@ export default function ImportScreen() {
           <>
             <Section title="2. Vista previa">
               <div className="space-y-2">
-                {(['clients', 'vehicles', 'services', 'orders', 'professions'] as CollectionKey[]).map((k) => (
+                {COLLECTION_KEYS.map((k) => (
                   <CollectionRow
                     key={k}
                     label={LABELS[k]}
                     items={plan[k]}
-                    update={updateExisting[k]}
-                    onToggle={(v) => setUpdateExisting((s) => ({ ...s, [k]: v }))}
+                    mode={modes[k]}
+                    onMode={(v) => setModes((s) => ({ ...s, [k]: v }))}
                     disabled={stage === 'importing' || stage === 'done'}
                   />
                 ))}
@@ -278,14 +286,14 @@ export default function ImportScreen() {
 function CollectionRow({
   label,
   items,
-  update,
-  onToggle,
+  mode,
+  onMode,
   disabled,
 }: {
   label: string;
   items: PlanItem[];
-  update: boolean;
-  onToggle: (v: boolean) => void;
+  mode: ImportMode;
+  onMode: (v: ImportMode) => void;
   disabled: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -304,11 +312,30 @@ function CollectionRow({
         {conflicts > 0 && <span className="text-xs text-red-300">{conflicts} en conflicto</span>}
         <ChevronDown className={`h-4 w-4 text-gray-400 transition ${open ? 'rotate-180' : ''}`} />
       </button>
-      {updates > 0 && (
-        <label className="mt-2 flex items-center gap-2 text-xs text-gray-300">
-          <input type="checkbox" checked={update} disabled={disabled} onChange={(e) => onToggle(e.target.checked)} />
-          Actualizar los {updates} existentes con los datos de Access
-        </label>
+      {(news > 0 || updates > 0) && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {(
+            [
+              ['none', 'No importar'],
+              ['new', 'Solo nuevos'],
+              ['all', 'Nuevos y cambios'],
+            ] as [ImportMode, string][]
+          )
+            .filter(([m]) => m !== 'all' || updates > 0)
+            .map(([m, text]) => (
+              <button
+                key={m}
+                type="button"
+                disabled={disabled}
+                onClick={() => onMode(m)}
+                className={`rounded-full border px-2.5 py-1 text-[11px] ${
+                  mode === m ? 'border-white bg-white text-black' : 'border-gray-600 text-gray-300'
+                }`}
+              >
+                {text}
+              </button>
+            ))}
+        </div>
       )}
       {open && interesting.length > 0 && (
         <ul className="mt-2 max-h-64 space-y-1 overflow-y-auto border-t border-white/10 pt-2 text-xs">

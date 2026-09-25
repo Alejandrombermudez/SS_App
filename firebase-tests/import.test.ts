@@ -6,14 +6,16 @@ import {
   doc,
   getDoc,
   getDocs,
+  query,
   runTransaction,
   serverTimestamp,
   setDoc,
   Timestamp,
+  where,
   writeBatch,
   type Firestore,
 } from 'firebase/firestore';
-import { buildPlan, materialize, planWrites, type AccessExport, type CollectionKey } from '../web/src/screens/settings/importPlan';
+import { batchSizeFor, buildPlan, materialize, planWrites, type AccessExport, type CollectionKey, type ImportMode } from '../web/src/screens/settings/importPlan';
 
 // Importa la exportación REAL de Access en el emulador, con las reglas de producción y como el
 // dueño, igual que la pantalla "Importar historial". Solo corre si existe el archivo local
@@ -21,19 +23,27 @@ import { buildPlan, materialize, planWrites, type AccessExport, type CollectionK
 const EXPORT = 'DB/export/ssm-export.json';
 const OWNER = 'alejucha@gmail.com';
 const STAFF = 'mecanico@gmail.com';
-const UPDATE_ALL: Record<CollectionKey, boolean> = { clients: true, vehicles: true, services: true, orders: true, professions: true };
+const UPDATE_ALL: Record<CollectionKey, ImportMode> = {
+  clients: 'all',
+  vehicles: 'all',
+  services: 'all',
+  orders: 'all',
+  professions: 'all',
+  client_accounts: 'all',
+};
 
 let env: RulesTestEnvironment;
 const as = (email: string) =>
   env.authenticatedContext(email.replace(/[^a-z]/g, ''), { email, email_verified: true }).firestore() as unknown as Firestore;
 
 async function readExisting(db: Firestore) {
-  const [clients, vehicles, services, orders, professions, counter] = await Promise.all([
+  const [clients, vehicles, services, orders, professions, accounts, counter] = await Promise.all([
     getDocs(collection(db, 'clients')),
     getDocs(collection(db, 'vehicles')),
     getDocs(collection(db, 'services')),
     getDocs(collection(db, 'orders')),
     getDocs(collection(db, 'professions')),
+    getDocs(collection(db, 'client_accounts')),
     getDoc(doc(db, 'counters', 'orders')),
   ]);
   const toMap = (s: typeof clients) => new Map(s.docs.map((d) => [d.id, d.data()]));
@@ -43,6 +53,7 @@ async function readExisting(db: Firestore) {
     services: toMap(services),
     orders: toMap(orders),
     professions: new Set(professions.docs.map((d) => String(d.data().name).trim().toLowerCase())),
+    clientAccounts: toMap(accounts),
     counter: Number(counter.data()?.last) || 0,
   };
 }
@@ -77,14 +88,15 @@ describe.runIf(existsSync(EXPORT))('migración real de Access con las reglas de 
     const sdk = { serverTimestamp, fromDate: (d: Date) => Timestamp.fromDate(d) };
     let written = 0;
     for (const [, ops] of planWrites(plan, UPDATE_ALL, OWNER)) {
-      for (let i = 0; i < ops.length; i += 400) {
+      const size = batchSizeFor(ops[0]?.collection ?? '');
+      for (let i = 0; i < ops.length; i += size) {
         const batch = writeBatch(db);
-        for (const op of ops.slice(i, i + 400)) {
+        for (const op of ops.slice(i, i + size)) {
           const ref = op.id ? doc(db, op.collection, op.id) : doc(collection(db, op.collection));
           batch.set(ref, materialize(op.data, sdk), { merge: op.merge });
         }
         await batch.commit();
-        written += Math.min(400, ops.length - i);
+        written += Math.min(size, ops.length - i);
       }
     }
     expect(written).toBeGreaterThan(exp.orders.length);
@@ -93,6 +105,7 @@ describe.runIf(existsSync(EXPORT))('migración real de Access con las reglas de 
     expect(after.orders.size).toBe(exp.orders.length);
     expect(after.clients.size).toBe(exp.clients.length);
     expect(after.counter).toBe(Math.max(...exp.orders.map((o) => o.number)));
+    expect(after.clientAccounts.size).toBe(new Set(exp.clients.map((c) => c.email).filter(Boolean)).size);
     // Se conservan los datos que solo existían en la app.
     expect(after.clients.get(exp.clients[0].id)).toMatchObject({ address: 'Calle 1', city: 'Bogotá', legacy: true });
     expect(after.services.get(exp.services[0].item_code)).toMatchObject({ dependencies: ['1002'], price: exp.services[0].price });
@@ -112,11 +125,24 @@ describe.runIf(existsSync(EXPORT))('migración real de Access con las reglas de 
   it('una segunda importación no encuentra nada por cambiar', async () => {
     const db = as(OWNER);
     const again = buildPlan(exp, await readExisting(db));
-    for (const key of ['clients', 'vehicles', 'services', 'orders', 'professions'] as const) {
+    for (const key of ['clients', 'vehicles', 'services', 'orders', 'professions', 'client_accounts'] as const) {
       const pending = again[key].filter((i) => i.kind !== 'same').map((i) => `${i.id}:${i.changes.join('|')}`);
       expect(pending, key).toEqual([]);
     }
     expect(again.counterTo).toBeNull();
+  });
+
+  it('cada cliente migrado ve exactamente sus misiones en el portal, y nada de otros', async () => {
+    // Los dueños también son clientes en Access, pero como personal ven todo: se excluyen.
+    const withEmail = exp.clients.filter((c) => c.email && ![OWNER, '831.ronald.leon@gmail.com'].includes(c.email));
+    expect(withEmail.length).toBeGreaterThan(20);
+    for (const c of withEmail) {
+      const db = as(c.email);
+      const mine = await getDocs(query(collection(db, 'orders'), where('client_id', '==', c.id)));
+      expect(mine.size, c.id).toBe(exp.orders.filter((o) => o.client_id === c.id).length);
+      const other = exp.clients.find((x) => x.id !== c.id)!;
+      await expect(getDocs(query(collection(db, 'orders'), where('client_id', '==', other.id)))).rejects.toThrow();
+    }
   });
 
   it('después de migrar, un agente crea la siguiente misión con número consecutivo', async () => {

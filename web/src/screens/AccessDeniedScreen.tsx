@@ -11,10 +11,10 @@ export default function AccessDeniedScreen() {
     >
       <div className="max-w-sm">
         <ShieldAlert className="mx-auto h-16 w-16 text-[#E63946]" strokeWidth={1.5} />
-        <h1 className="mt-4 text-xl font-semibold">Acceso restringido</h1>
+        <h1 className="mt-4 text-xl font-semibold">No encontramos tu cuenta</h1>
         <p className="mt-2 text-sm text-white/70">
-          La cuenta <strong className="text-white">{user?.email}</strong> no está autorizada como agente del
-          taller. Pídele a un administrador que te agregue en Configuración &gt; Personal.
+          La cuenta <strong className="text-white">{user?.email}</strong> no está registrada en el taller. Si eres
+          cliente, pide que registren este correo en tu ficha para ver tus motos y tus misiones.
         </p>
         <button
           type="button"

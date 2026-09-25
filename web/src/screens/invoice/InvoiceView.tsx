@@ -1,161 +1,178 @@
 import type { ReactNode } from 'react';
 import { formatCOP } from '../../utils/format';
-import { EXPIRY_LABEL, type ExpiryState, type InvoiceModel } from './invoiceModel';
+import { EXPIRY_LABEL, INVOICE_COLORS as C, type ExpiryState, type Field, type InvoiceModel } from './invoiceModel';
 
-const RED = '#B80828';
-
-/** Documento de misión (factura / cotización) en HTML: lo que se ve en pantalla y se imprime. */
+/** Documento de misión (cotización / orden de servicio) en HTML: lo que se ve en pantalla y se imprime. */
 export default function InvoiceView({ m }: { m: InvoiceModel }) {
   return (
-    <article className="invoice-paper relative mx-auto w-full max-w-[816px] overflow-hidden bg-white p-5 text-[13px] leading-snug text-neutral-900 shadow-xl sm:p-12">
+    <article className="invoice-paper relative mx-auto w-full max-w-[816px] overflow-hidden bg-white p-4 text-[13px] leading-snug text-neutral-900 shadow-xl sm:p-10">
       {/* CABECERA */}
-      <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-center gap-4">
-          <img src="/brand/agente.png" alt="" className="h-16 w-16 shrink-0 sm:h-20 sm:w-20" />
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-neutral-800">Servicio Secreto</p>
-            <p className="font-serif text-2xl font-black uppercase leading-none tracking-wide" style={{ color: RED }}>
-              Motorcycles
-            </p>
-            {m.contactLine && <p className="mt-1.5 text-[11px] text-neutral-500">{m.contactLine}</p>}
-            {(m.business.address || m.business.city) && (
-              <p className="text-[11px] text-neutral-500">{[m.business.address, m.business.city].filter(Boolean).join(', ')}</p>
-            )}
-          </div>
+      <header className="flex items-center gap-3 sm:gap-5">
+        <img src="/brand/agente.png" alt="" className="h-16 w-16 shrink-0 sm:h-20 sm:w-20" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-700 sm:text-[11px]">Servicio Secreto</p>
+          <p className="font-serif text-xl font-black uppercase leading-none tracking-wide sm:text-3xl" style={{ color: C.red }}>
+            Motorcycles
+          </p>
+          {m.contactLine && <p className="mt-1 truncate text-[11px] text-neutral-500">{m.contactLine}</p>}
         </div>
-
-        <div className="sm:text-right">
-          <p className="font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-neutral-500">Documento de misión</p>
-          <p className="font-mono text-3xl font-bold tracking-tight">Nº {m.number}</p>
+        <div className="shrink-0 text-right">
+          <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500 sm:text-[10px]">Documento de misión</p>
+          <p className="font-mono text-2xl font-bold leading-tight sm:text-3xl">Nº {m.number}</p>
           <span
-            className="mt-1.5 inline-block rounded-sm px-2.5 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.2em]"
-            style={m.isQuote ? { border: `1.5px solid ${RED}`, color: RED } : { backgroundColor: RED, color: 'white' }}
+            className="mt-1 inline-block rounded-sm px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em]"
+            style={m.isQuote ? { border: `1.5px solid ${C.red}`, color: C.red } : { backgroundColor: C.red, color: 'white' }}
           >
             {m.statusLabel}
           </span>
         </div>
       </header>
 
-      <div className="mt-5 h-1" style={{ backgroundColor: RED }} />
-      <div className="mt-0.5 h-px bg-neutral-900" />
+      <div className="mt-4 border-y border-neutral-200 py-2">
+        <img src="/brand/lineas.png" alt="Offroad · Road of City · Sportbike · Adventure · Custom" className="mx-auto h-9 w-auto opacity-80 sm:h-11" />
+      </div>
+      <div className="h-1" style={{ backgroundColor: C.red }} />
 
-      {/* CLIENTE / VEHÍCULO / MISIÓN */}
-      <div className="mt-6 grid gap-5 sm:grid-cols-3">
-        <InfoBlock title="Cliente">
-          <p className="text-[15px] font-bold">{m.client.name}</p>
-          <Kv k="C.C. / NIT" v={m.client.id} />
-          {m.client.phone && <Kv k="Teléfono" v={m.client.phone} />}
-          {m.client.email && <Kv k="Correo" v={m.client.email} />}
-        </InfoBlock>
+      {/* CLIENTE / OBJETIVO / MISIÓN */}
+      <div className="mt-5 grid gap-5 sm:grid-cols-[1.15fr_1.15fr_1fr]">
+        <Block title="Datos del cliente">
+          <p className="text-[15px] font-bold uppercase">{m.client.name}</p>
+          <Fields fields={m.client.fields} />
+        </Block>
 
-        <InfoBlock title="Vehículo">
+        <Block title="Datos del objetivo">
           <span className="inline-block rounded-[3px] border-2 border-black bg-[#F6C700] px-2 py-px font-mono text-base font-bold tracking-[0.2em]">
             {m.vehicle.plate}
           </span>
-          {m.vehicle.title && <p className="mt-1 font-semibold">{m.vehicle.title}</p>}
+          {m.vehicle.title && <p className="mt-1 font-bold uppercase">{m.vehicle.title}</p>}
           {m.vehicle.details && <p className="text-neutral-600">{m.vehicle.details}</p>}
           {m.vehicle.soat.date && <Expiry label="SOAT" date={m.vehicle.soat.date} state={m.vehicle.soat.state} />}
-          {m.vehicle.tecno.date && <Expiry label="Tecnomecánica" date={m.vehicle.tecno.date} state={m.vehicle.tecno.state} />}
-        </InfoBlock>
+          {m.vehicle.tecno.date && <Expiry label="Tecno" date={m.vehicle.tecno.date} state={m.vehicle.tecno.state} />}
+        </Block>
 
-        <InfoBlock title="Misión">
-          <Kv k="Servicio" v={m.mission.serviceType} />
-          {m.mission.entry && <Kv k="Ingreso" v={m.mission.entry} />}
-          {m.mission.exit && <Kv k="Salida" v={m.mission.exit} />}
-          {m.mission.km && <Kv k="Kilometraje" v={m.mission.km} />}
-        </InfoBlock>
+        <Block title="Documento de misión">
+          <Fields fields={m.mission} />
+        </Block>
       </div>
 
       {m.initialNotes && <Notes title="Observaciones iniciales">{m.initialNotes}</Notes>}
 
-      {/* SERVICIOS */}
-      {m.serviceGroups.length > 0 && (
-        <>
-          <SectionTitle>Detalles de la misión</SectionTitle>
+      {/* DETALLES (SERVICIOS) */}
+      {m.serviceCount > 0 && (
+        <section className="mt-6">
+          <Bar color={C.services} title="Detalles de la misión" />
           <table className="w-full border-collapse tabular-nums">
             <thead>
-              <tr className="border-b-2 border-neutral-900 text-left font-mono text-[10px] uppercase tracking-wider text-neutral-500">
-                <th className="w-14 py-1.5 pr-2 font-bold">Ítem</th>
+              <tr className="text-left font-mono text-[10px] uppercase tracking-wider" style={{ color: C.services }}>
+                <th className="w-14 py-1.5 pl-1 pr-2 font-bold">Ítem</th>
+                <th className="hidden w-28 py-1.5 pr-2 font-bold sm:table-cell">Sección</th>
                 <th className="py-1.5 pr-2 font-bold">Descripción</th>
                 <th className="w-10 py-1.5 pr-2 text-center font-bold">Cant.</th>
                 <th className="hidden w-24 py-1.5 pr-2 text-right font-bold sm:table-cell">Precio</th>
-                <th className="w-24 py-1.5 text-right font-bold">Total</th>
+                <th className="w-24 py-1.5 pr-1 text-right font-bold">Total</th>
               </tr>
             </thead>
             <tbody>
-              {m.serviceGroups.map(([section, lines]) => (
-                <SectionRows key={section} section={section}>
-                  {lines.map((l, i) => (
-                    <tr key={`${l.itemCode}-${i}`} className="border-b border-neutral-200 align-top">
-                      <td className="py-1.5 pr-2 font-mono text-[11px] text-neutral-500">{l.itemCode}</td>
-                      <td className="py-1.5 pr-2">{l.description}</td>
-                      <td className="py-1.5 pr-2 text-center">{l.quantity}</td>
-                      <td className="hidden py-1.5 pr-2 text-right sm:table-cell">{formatCOP(l.price)}</td>
-                      <td className="py-1.5 text-right">{formatCOP(l.quantity * l.price)}</td>
-                    </tr>
-                  ))}
-                </SectionRows>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
-
-      {/* RECURSOS */}
-      {m.parts.length > 0 && (
-        <>
-          <SectionTitle>Recursos de la misión</SectionTitle>
-          <table className="w-full border-collapse tabular-nums">
-            <thead>
-              <tr className="border-b-2 border-neutral-900 text-left font-mono text-[10px] uppercase tracking-wider text-neutral-500">
-                <th className="w-24 py-1.5 pr-2 font-bold">Tipo</th>
-                <th className="py-1.5 pr-2 font-bold">Descripción</th>
-                <th className="w-10 py-1.5 pr-2 text-center font-bold">Cant.</th>
-                <th className="hidden w-24 py-1.5 pr-2 text-right font-bold sm:table-cell">Precio</th>
-                <th className="w-24 py-1.5 text-right font-bold">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {m.parts.map((p, i) => (
-                <tr key={i} className="border-b border-neutral-200 align-top">
-                  <td className="py-1.5 pr-2 text-[11px] text-neutral-500">{p.type}</td>
-                  <td className="py-1.5 pr-2">{p.description}</td>
-                  <td className="py-1.5 pr-2 text-center">{p.quantity}</td>
-                  <td className="hidden py-1.5 pr-2 text-right sm:table-cell">{formatCOP(p.price)}</td>
-                  <td className="py-1.5 text-right">{formatCOP(p.quantity * p.price)}</td>
+              {m.serviceRows.map((l, i) => (
+                <tr
+                  key={`${l.itemCode}-${i}`}
+                  className="align-top"
+                  style={{
+                    borderTop: l.firstOfSection && i > 0 ? '1px solid #9DB2D1' : undefined,
+                    backgroundColor: i % 2 ? C.servicesTint : undefined,
+                  }}
+                >
+                  <td className="py-1 pl-1 pr-2 font-mono text-[11px] text-neutral-500">{l.itemCode}</td>
+                  <td className="hidden py-1 pr-2 text-[11px] font-semibold uppercase sm:table-cell" style={{ color: C.services }}>
+                    {l.firstOfSection ? l.section : ''}
+                  </td>
+                  <td className="py-1 pr-2">
+                    {l.description}
+                    {l.firstOfSection && <span className="block text-[10px] uppercase text-neutral-400 sm:hidden">{l.section}</span>}
+                  </td>
+                  <td className="py-1 pr-2 text-center">{l.quantity}</td>
+                  <td className="hidden py-1 pr-2 text-right sm:table-cell">{formatCOP(l.price)}</td>
+                  <td className="py-1 pr-1 text-right">{formatCOP(l.quantity * l.price)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </>
+
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-between">
+            {m.discountPct > 0 ? (
+              <div className="flex-1 rounded border-l-4 bg-amber-50 px-3 py-2 sm:max-w-sm" style={{ borderColor: '#D97706' }}>
+                <p className="font-mono text-[11px] font-bold uppercase tracking-wide text-amber-800">¡Alerta! Pago en efectivo</p>
+                <p className="text-[12px] text-amber-900">
+                  Aplica un descuento especial del <strong>{m.discountPct}%</strong> sobre los servicios.
+                </p>
+                {m.business.discountNote && <p className="mt-0.5 text-[11px] font-semibold text-amber-800">{m.business.discountNote}</p>}
+              </div>
+            ) : (
+              <div />
+            )}
+            <div className="w-full sm:w-72">
+              <TotalRow label="Subtotal de servicios" value={formatCOP(m.totals.subtotal)} />
+              {m.discountPct > 0 && (
+                <TotalRow label={`Descuento ${m.discountPct}%`} value={`− ${formatCOP(m.totals.discount)}`} color={C.red} />
+              )}
+              <TotalRow label="Total de servicios" value={formatCOP(m.totals.servicesTotal)} strong color={C.services} tint={C.servicesTint} />
+            </div>
+          </div>
+        </section>
       )}
 
-      {/* LIQUIDACIÓN */}
-      <div className="mt-8 flex flex-col-reverse items-center gap-6 sm:flex-row sm:items-end sm:justify-between">
-        <img src="/brand/sello.png" alt="" className="h-28 w-28 -rotate-12 opacity-90 sm:h-32 sm:w-32" />
-        <div className="w-full tabular-nums sm:w-80">
-          <TotalRow label="Subtotal de servicios" value={formatCOP(m.totals.subtotal)} />
-          {m.discountPct > 0 && (
-            <TotalRow label={`Descuento ${m.discountPct}%*`} value={`− ${formatCOP(m.totals.discount)}`} accent />
-          )}
-          <TotalRow label="Total de servicios" value={formatCOP(m.totals.servicesTotal)} />
-          <TotalRow label="Total de recursos" value={formatCOP(m.totals.partsTotal)} />
-          <div className="mt-2 flex items-center justify-between bg-neutral-900 px-3 py-2.5 text-white" style={{ borderLeft: `6px solid ${RED}` }}>
-            <span className="font-mono text-[11px] font-bold uppercase tracking-wider">Costo total de la misión</span>
-            <span className="text-lg font-bold">{formatCOP(m.totals.total)}</span>
+      {/* RECURSOS */}
+      {m.parts.length > 0 && (
+        <section className="mt-6">
+          <Bar color={C.parts} title="Recursos de la misión" />
+          <table className="w-full border-collapse tabular-nums">
+            <thead>
+              <tr className="text-left font-mono text-[10px] uppercase tracking-wider" style={{ color: C.parts }}>
+                <th className="w-24 py-1.5 pl-1 pr-2 font-bold">Tipo</th>
+                <th className="py-1.5 pr-2 font-bold">Descripción</th>
+                <th className="w-10 py-1.5 pr-2 text-center font-bold">Cant.</th>
+                <th className="hidden w-24 py-1.5 pr-2 text-right font-bold sm:table-cell">Precio</th>
+                <th className="w-24 py-1.5 pr-1 text-right font-bold">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {m.parts.map((p, i) => (
+                <tr key={i} className="align-top" style={i % 2 ? { backgroundColor: C.partsTint } : undefined}>
+                  <td className="py-1 pl-1 pr-2 text-[11px] text-neutral-600">{p.type}</td>
+                  <td className="py-1 pr-2">{p.description}</td>
+                  <td className="py-1 pr-2 text-center">{p.quantity}</td>
+                  <td className="hidden py-1 pr-2 text-right sm:table-cell">{formatCOP(p.price)}</td>
+                  <td className="py-1 pr-1 text-right">{formatCOP(p.quantity * p.price)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="flex justify-end border-t-2" style={{ borderColor: C.parts }}>
+            <div className="w-full sm:w-72">
+              <TotalRow label="Total de recursos" value={formatCOP(m.totals.partsTotal)} strong color={C.parts} tint={C.partsTint} />
+            </div>
           </div>
-          {m.discountPct > 0 && m.business.discountNote && (
-            <p className="mt-1.5 text-[10.5px] leading-tight text-neutral-500">* {m.business.discountNote}</p>
-          )}
-        </div>
-      </div>
+        </section>
+      )}
 
       {m.finalNotes && <Notes title="Observaciones finales">{m.finalNotes}</Notes>}
 
+      {/* COSTO TOTAL */}
+      <div className="mt-7 flex items-center gap-4">
+        <img src="/brand/sello.png" alt="" className="hidden h-24 w-24 -rotate-12 opacity-90 sm:block" />
+        <div className="flex flex-1 flex-col gap-1 bg-neutral-900 px-4 py-3 text-white sm:flex-row sm:items-center sm:justify-between" style={{ borderLeft: `8px solid ${C.red}` }}>
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] sm:text-xs">
+            Costo total de la misión Nº {Number(m.number)}
+          </span>
+          <span className="text-2xl font-bold tabular-nums">{formatCOP(m.totals.total)}</span>
+        </div>
+      </div>
+
       {/* PIE */}
-      <footer className="mt-8 border-t border-neutral-300 pt-3 text-center text-[10.5px] text-neutral-500">
+      <footer className="mt-7 border-t border-neutral-300 pt-3 text-center text-[10.5px] text-neutral-500">
         {m.validityNote && <p className="font-semibold text-neutral-700">{m.validityNote}</p>}
         {m.business.footerNote && <p>{m.business.footerNote}</p>}
+        {(m.business.address || m.business.city) && <p>{[m.business.address, m.business.city].filter(Boolean).join(', ')}</p>}
         <p className="mt-1 font-mono uppercase tracking-wider">
           {m.business.name} · Documento generado el {m.generatedOn}
         </p>
@@ -164,10 +181,10 @@ export default function InvoiceView({ m }: { m: InvoiceModel }) {
   );
 }
 
-function InfoBlock({ title, children }: { title: string; children: ReactNode }) {
+function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
-      <h3 className="mb-1.5 border-b border-neutral-300 pb-1 font-mono text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: RED }}>
+      <h3 className="mb-1.5 border-b-2 pb-1 font-mono text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: C.red, borderColor: C.ink }}>
         {title}
       </h3>
       <div className="space-y-0.5">{children}</div>
@@ -175,52 +192,60 @@ function InfoBlock({ title, children }: { title: string; children: ReactNode }) 
   );
 }
 
-function Kv({ k, v }: { k: string; v: string }) {
+function Fields({ fields }: { fields: Field[] }) {
   return (
-    <p>
-      <span className="text-neutral-500">{k}: </span>
-      <span className="font-medium">{v}</span>
-    </p>
+    <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[12.5px]">
+      {fields.map((f) => (
+        <div key={f.label} className="contents">
+          <dt className="text-neutral-500">{f.label}</dt>
+          <dd className="min-w-0 break-words font-medium">{f.value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
 function Expiry({ label, date, state }: { label: string; date: string; state: ExpiryState }) {
-  const color = state === 'expired' ? RED : state === 'soon' ? '#B45309' : '#525252';
+  const color = state === 'expired' ? C.red : state === 'soon' ? '#B45309' : '#404040';
   return (
     <p className="text-[12px]" style={{ color }}>
-      {label}: {date}
-      {state !== 'ok' && state !== 'unknown' && <strong className="ml-1 uppercase">({EXPIRY_LABEL[state]})</strong>}
+      <span className="text-neutral-500">{label} vence </span>
+      <span className="font-medium">{date}</span>
+      {(state === 'expired' || state === 'soon') && <strong className="ml-1 uppercase">· {EXPIRY_LABEL[state]}</strong>}
     </p>
   );
 }
 
-function SectionTitle({ children }: { children: ReactNode }) {
+function Bar({ color, title }: { color: string; title: string }) {
   return (
-    <h3 className="mb-1 mt-7 flex items-center gap-2 font-mono text-[12px] font-bold uppercase tracking-[0.2em]">
-      <span className="inline-block h-3 w-1.5" style={{ backgroundColor: RED }} />
-      {children}
+    <h3 className="px-2 py-1 text-center font-mono text-[12px] font-bold uppercase tracking-[0.25em] text-white" style={{ backgroundColor: color }}>
+      {title}
     </h3>
   );
 }
 
-function SectionRows({ section, children }: { section: string; children: ReactNode }) {
+function TotalRow({
+  label,
+  value,
+  strong = false,
+  color,
+  tint,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  color?: string;
+  tint?: string;
+}) {
   return (
-    <>
-      <tr>
-        <td colSpan={5} className="bg-neutral-100 px-1 pb-1 pt-2 text-[10.5px] font-bold uppercase tracking-wider text-neutral-600">
-          {section}
-        </td>
-      </tr>
-      {children}
-    </>
-  );
-}
-
-function TotalRow({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="flex items-center justify-between border-b border-neutral-200 px-1 py-1.5">
-      <span className="text-neutral-600">{label}</span>
-      <span className="font-semibold" style={accent ? { color: RED } : undefined}>
+    <div
+      className={`flex items-center justify-between border-b border-neutral-200 px-2 py-1.5 tabular-nums ${strong ? 'font-bold' : ''}`}
+      style={tint ? { backgroundColor: tint } : undefined}
+    >
+      <span className={strong ? '' : 'text-neutral-600'} style={strong && color ? { color } : undefined}>
+        {label}
+      </span>
+      <span className="font-semibold" style={color ? { color } : undefined}>
         {value}
       </span>
     </div>
@@ -229,7 +254,7 @@ function TotalRow({ label, value, accent = false }: { label: string; value: stri
 
 function Notes({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="mt-6 border-l-4 bg-neutral-50 px-4 py-2.5" style={{ borderColor: RED }}>
+    <div className="mt-5 border-l-4 bg-neutral-50 px-4 py-2.5" style={{ borderColor: C.red }}>
       <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">{title}</p>
       <p className="mt-1 whitespace-pre-line">{children}</p>
     </div>

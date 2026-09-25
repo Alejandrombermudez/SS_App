@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPlan, type AccessExport } from './importPlan';
+import { buildPlan, isPlaceholderEmail, type AccessExport } from './importPlan';
 
 const exp: AccessExport = {
   exported_at: '2026-09-25T11:00:00',
@@ -33,9 +33,44 @@ const exp: AccessExport = {
   warnings: [],
 };
 
-const empty = () => ({ clients: new Map(), vehicles: new Map(), services: new Map(), orders: new Map(), professions: new Set<string>(), counter: 0 });
+const empty = () => ({
+  clients: new Map(),
+  vehicles: new Map(),
+  services: new Map(),
+  orders: new Map(),
+  professions: new Set<string>(),
+  clientAccounts: new Map(),
+  counter: 0,
+});
+
+describe('isPlaceholderEmail', () => {
+  it('reconoce los correos de relleno de Access para no enlazarlos nunca a un portal', () => {
+    for (const e of ['abc@gmail.com', 'ABC@gmail.com', 'asd@gmail.com', 'abc@google.com', 'test@hotmail.com', 'sin-arroba']) {
+      expect(isPlaceholderEmail(e), e).toBe(true);
+    }
+    for (const e of ['juan.perez@gmail.com', 'abcd@gmail.com', 'jninot@unal.edu.co']) {
+      expect(isPlaceholderEmail(e), e).toBe(false);
+    }
+  });
+});
 
 describe('buildPlan', () => {
+  it('enlaza cada correo de cliente con su cédula para el portal', () => {
+    const plan = buildPlan(exp, empty());
+    expect(plan.client_accounts).toEqual([
+      expect.objectContaining({ id: 'l@x.co', kind: 'new', data: { client_id: '200' } }),
+    ]);
+  });
+
+  it('vacía los valores de relleno de Access que ya se habían migrado', () => {
+    const existing = empty();
+    existing.clients.set('200', { name: 'Luis', phone: '301', email: 'l@x.co', instagram: '@abc' });
+    existing.clients.set('100', { name: 'Ana Pérez', email: 'ABC@gmail.com' });
+    const plan = buildPlan(exp, existing);
+    expect(plan.clients[1]).toMatchObject({ kind: 'update', data: { instagram: '' } });
+    expect(plan.clients[0].data).toMatchObject({ email: '' });
+  });
+
   it('todo es nuevo en una base vacía, con los totales recalculados', () => {
     const plan = buildPlan(exp, empty());
     expect(plan.clients.map((c) => c.kind)).toEqual(['new', 'new']);
@@ -86,10 +121,11 @@ describe('buildPlan', () => {
     first.vehicles.forEach((v) => existing.vehicles.set(v.id, v.data));
     first.services.forEach((s) => existing.services.set(s.id, s.data));
     first.orders.forEach((o) => existing.orders.set(o.id, o.data));
+    first.client_accounts.forEach((a) => existing.clientAccounts.set(a.id, a.data));
     existing.professions.add('ingeniera');
     existing.counter = 16;
     const again = buildPlan(exp, existing);
-    for (const key of ['clients', 'vehicles', 'services', 'orders', 'professions'] as const) {
+    for (const key of ['clients', 'vehicles', 'services', 'orders', 'professions', 'client_accounts'] as const) {
       expect(again[key].every((i) => i.kind === 'same')).toBe(true);
     }
     expect(again.counterTo).toBeNull();

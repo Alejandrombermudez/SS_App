@@ -16,3 +16,22 @@ export const CATEGORY_STYLES: Record<string, { bg: string; text: string }> = {
 export function getCategoryColor(category: string): string {
   return CATEGORY_STYLES[category.toUpperCase()]?.bg ?? '#9CA3AF';
 }
+
+export type ExpiryState = 'ok' | 'soon' | 'expired' | 'unknown';
+
+/** Vigencia de SOAT / tecnomecánica ('YYYY-MM-DD') respecto a una fecha; "pronto" = 30 días. */
+export function expiryState(iso: string, reference: Date = new Date()): ExpiryState {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return 'unknown';
+  const date = new Date(`${iso}T23:59:59`);
+  const days = (date.getTime() - reference.getTime()) / 86_400_000;
+  if (days < 0) return 'expired';
+  if (days <= 30) return 'soon';
+  return 'ok';
+}
+
+export const EXPIRY_LABEL: Record<ExpiryState, string> = {
+  ok: 'vigente',
+  soon: 'vence pronto',
+  expired: 'vencido',
+  unknown: '',
+};

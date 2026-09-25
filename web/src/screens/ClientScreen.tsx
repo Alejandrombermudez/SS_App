@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { collection, doc, getDocs, onSnapshot, orderBy, query, setDoc, where } from 'firebase/firestore';
-import { ArrowLeft, ChevronDown, Lock, Plus, Search, Settings, X } from 'lucide-react';
+import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, orderBy, query, setDoc, where } from 'firebase/firestore';
+import { ArrowLeft, ChevronDown, Eye, Lock, Plus, Search, Settings, X } from 'lucide-react';
 import { db } from '../firebase';
 import { clientConverter, vehicleConverter } from '../firestoreConverters';
 import { emptyClient, GENDER_OPTIONS, type Client, type Vehicle } from '../types';
@@ -9,6 +9,7 @@ import { inputClass, labelClass } from '../components/formStyles';
 import AddProfessionDialog from './clients/AddProfessionDialog';
 import AddVehicleDialog from './clients/AddVehicleDialog';
 import VehicleDetailDialog from './clients/VehicleDetailDialog';
+import { isPlaceholderEmail } from './settings/importPlan';
 
 export default function ClientScreen() {
   const navigate = useNavigate();
@@ -134,6 +135,31 @@ export default function ClientScreen() {
     setGender('');
   }
 
+  // El correo de la ficha es la cuenta de Google con la que el cliente entra a su portal:
+  // client_accounts/{correo} -> cédula. Se mantiene al día cuando cambia el correo.
+  async function linkPortalAccount(id: string, clientName: string, previousEmail: string, newEmail: string) {
+    const prev = previousEmail.trim().toLowerCase();
+    if (prev && prev !== newEmail) {
+      const oldRef = doc(db, 'client_accounts', prev);
+      const old = await getDoc(oldRef);
+      if (old.exists() && old.data().client_id === id) await deleteDoc(oldRef);
+    }
+    if (!newEmail || isPlaceholderEmail(newEmail)) return;
+    const ref = doc(db, 'client_accounts', newEmail);
+    const current = await getDoc(ref);
+    const linkedTo = current.exists() ? (current.data().client_id as string) : null;
+    if (linkedTo === id) return;
+    if (linkedTo) {
+      const other = allClients.find((c) => c.id === linkedTo);
+      const ok = window.confirm(
+        `El correo ${newEmail} ya da acceso al portal de ${other?.name ?? 'otro cliente'} (C.C. ${linkedTo}). ` +
+          `¿Pasarlo a ${clientName || id}?`,
+      );
+      if (!ok) return;
+    }
+    await setDoc(ref, { client_id: id });
+  }
+
   async function handleSaveClient() {
     const id = clientIdInput.trim().replace(/\s+/g, '');
     if (!id) {
@@ -144,13 +170,18 @@ export default function ClientScreen() {
       setSaveError('La cédula / NIT solo puede tener números, letras, puntos o guiones (3 a 20).');
       return;
     }
+    const cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(cleanEmail)) {
+      setSaveError('El correo no es válido. Es la cuenta de Google con la que el cliente entra a su portal.');
+      return;
+    }
     setSaving(true);
     const clientToSave: Client = {
       ...emptyClient(),
       id,
       name,
       phone,
-      email,
+      email: cleanEmail,
       address,
       city,
       profession,
@@ -160,6 +191,8 @@ export default function ClientScreen() {
     };
     try {
       await setDoc(doc(db, 'clients', id).withConverter(clientConverter), clientToSave, { merge: true });
+      await linkPortalAccount(id, name, client?.email ?? '', cleanEmail);
+      setEmail(cleanEmail);
       setSaveError(null);
       setClient(clientToSave);
       setClientIdInput(id);
@@ -320,7 +353,7 @@ export default function ClientScreen() {
               </div>
 
               <div>
-                <label className={labelClass}>Correo</label>
+                <label className={labelClass}>Correo (cuenta de Google para su portal)</label>
                 <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" className={inputClass} />
               </div>
 
@@ -354,11 +387,20 @@ export default function ClientScreen() {
 
             {saveError && <p className="mt-3 text-sm text-red-400">{saveError}</p>}
 
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
               {!isNewClient && client && (
-                <button type="button" onClick={prepareNewClient} className="px-4 py-2 text-sm text-gray-400 hover:text-white">
-                  Cancelar / Nuevo
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/portal/${client.id}`)}
+                    className="mr-auto flex items-center gap-1.5 px-2 py-2 text-sm text-gray-300 hover:text-white"
+                  >
+                    <Eye className="h-4 w-4" /> Ver como cliente
+                  </button>
+                  <button type="button" onClick={prepareNewClient} className="px-4 py-2 text-sm text-gray-400 hover:text-white">
+                    Cancelar / Nuevo
+                  </button>
+                </>
               )}
               <button
                 type="button"

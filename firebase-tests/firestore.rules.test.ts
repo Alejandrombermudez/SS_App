@@ -7,13 +7,17 @@ import {
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import {
+  collection,
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
+  query,
   runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
   writeBatch,
   type Firestore,
 } from 'firebase/firestore';
@@ -22,6 +26,7 @@ const OWNER = 'alejucha@gmail.com';
 const STAFF = 'mecanico@gmail.com';
 const OTHER_ADMIN = 'jefe@gmail.com';
 const STRANGER = 'curioso@gmail.com';
+const CLIENT = 'cliente@gmail.com';
 
 let env: RulesTestEnvironment;
 
@@ -80,7 +85,14 @@ beforeEach(async () => {
     await setDoc(doc(db, 'vehicles', 'ABC12D'), { brand: 'Yamaha', client_id: '1000' });
     await setDoc(doc(db, 'services', '8001'), { item_code: '8001', price: 100000, cost_type: 'Fijo' });
     await setDoc(doc(db, 'counters', 'orders'), { last: 127 });
-    await setDoc(doc(db, 'orders', '127'), { number: 127, created_by: OWNER });
+    await setDoc(doc(db, 'orders', '127'), { number: 127, created_by: OWNER, client_id: '1000' });
+    // Otro cliente, con su moto y su misión.
+    await setDoc(doc(db, 'clients', '2000'), { name: 'Otro cliente' });
+    await setDoc(doc(db, 'vehicles', 'OTR99X'), { brand: 'AKT', client_id: '2000' });
+    await setDoc(doc(db, 'orders', '126'), { number: 126, created_by: OWNER, client_id: '2000' });
+    // El cliente 1000 entra al portal con su Gmail.
+    await setDoc(doc(db, 'client_accounts', CLIENT), { client_id: '1000' });
+    await setDoc(doc(db, 'settings', 'business'), { name: 'SS' });
   });
 });
 
@@ -112,6 +124,45 @@ describe('acceso', () => {
       await assertSucceeds(getDoc(doc(dbAs(email), 'clients', '1000')));
       await assertSucceeds(getDoc(doc(dbAs(email), 'orders', '127')));
     }
+  });
+});
+
+describe('portal de clientes', () => {
+  it('el cliente lee su ficha, sus motos y sus misiones', async () => {
+    const db = dbAs(CLIENT);
+    await assertSucceeds(getDoc(doc(db, 'clients', '1000')));
+    await assertSucceeds(getDoc(doc(db, 'vehicles', 'ABC12D')));
+    await assertSucceeds(getDoc(doc(db, 'orders', '127')));
+    await assertSucceeds(getDocs(query(collection(db, 'vehicles'), where('client_id', '==', '1000'))));
+    await assertSucceeds(getDocs(query(collection(db, 'orders'), where('client_id', '==', '1000'))));
+    await assertSucceeds(getDoc(doc(db, 'settings', 'business')));
+    await assertSucceeds(getDoc(doc(db, 'client_accounts', CLIENT)));
+  });
+
+  it('no ve nada de otros clientes ni el catálogo', async () => {
+    const db = dbAs(CLIENT);
+    await assertFails(getDoc(doc(db, 'clients', '2000')));
+    await assertFails(getDoc(doc(db, 'vehicles', 'OTR99X')));
+    await assertFails(getDoc(doc(db, 'orders', '126')));
+    await assertFails(getDocs(query(collection(db, 'orders'), where('client_id', '==', '2000'))));
+    await assertFails(getDocs(collection(db, 'orders')));
+    await assertFails(getDocs(collection(db, 'clients')));
+    await assertFails(getDoc(doc(db, 'services', '8001')));
+    await assertFails(getDoc(doc(db, 'client_accounts', 'otro@gmail.com')));
+  });
+
+  it('el cliente no puede escribir nada, ni enlazarse a otra cédula', async () => {
+    const db = dbAs(CLIENT);
+    await assertFails(setDoc(doc(db, 'clients', '1000'), { phone: '1' }, { merge: true }));
+    await assertFails(updateDoc(doc(db, 'orders', '127'), { total: 0 }));
+    await assertFails(setDoc(doc(db, 'client_accounts', CLIENT), { client_id: '2000' }));
+    await assertFails(setDoc(doc(db, 'settings', 'business'), { name: 'x' }));
+  });
+
+  it('el personal enlaza correos solo a clientes que existen', async () => {
+    await assertSucceeds(setDoc(doc(dbAs(OWNER), 'client_accounts', 'nuevo@gmail.com'), { client_id: '2000' }));
+    await assertFails(setDoc(doc(dbAs(OWNER), 'client_accounts', 'x@gmail.com'), { client_id: '9999' }));
+    await assertFails(setDoc(doc(dbAs(OWNER), 'client_accounts', 'X@gmail.com'), { client_id: '2000' }));
   });
 });
 

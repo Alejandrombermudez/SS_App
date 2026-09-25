@@ -80,8 +80,9 @@ export const emptyVehicle = (clientId: string): Vehicle => ({
   licenseImage: '',
 });
 
-// 'none': inició sesión con Google pero no está autorizado (no está en users/ ni es dueño).
-export type UserRole = 'admin' | 'staff' | 'none';
+// 'client': cliente del taller (su correo está en client_accounts/): solo ve su portal.
+// 'none': inició sesión con Google pero no es personal ni cliente enlazado.
+export type UserRole = 'admin' | 'staff' | 'client' | 'none';
 
 export interface StaffUser {
   email: string; // también es el ID del documento, en minúsculas
@@ -160,16 +161,17 @@ export interface BusinessSettings {
   footerNote: string;
 }
 
+// Valores tomados de la factura actual (MISION Nº85.pdf); se editan en Configuración.
 export const DEFAULT_BUSINESS: BusinessSettings = {
   name: 'Servicio Secreto Motorcycles',
   legalId: '',
-  phone: '',
+  phone: '+57 302 612 8712',
   email: '',
   address: '',
   city: '',
   instagram: '',
   website: '',
-  discountNote: 'El descuento no aplica para pagos por transferencia, Nequi, Daviplata o Bre-B.',
+  discountNote: 'No aplica para transferencias, Nequi, Daviplata o Bre-B.',
   quoteValidityDays: 0,
   footerNote: '',
 };
