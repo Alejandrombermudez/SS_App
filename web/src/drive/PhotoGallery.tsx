@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, ExternalLink, Images, Lock, X } from 'lucide-react';
 import { Spinner } from '../components/ui';
 import {
@@ -19,7 +20,9 @@ export default function PhotosButton({ url, title, className }: { url: string; t
       <button type="button" onClick={() => setOpen(true)} className={className}>
         <Images className="h-4 w-4" /> Ver fotos
       </button>
-      {open && <Gallery url={url} title={title} onClose={() => setOpen(false)} />}
+      {/* En un portal: así la galería ocupa toda la pantalla aunque el botón esté dentro de un
+          contenedor con filtro/desenfoque (que haría que "fixed" se midiera contra ese contenedor). */}
+      {open && createPortal(<Gallery url={url} title={title} onClose={() => setOpen(false)} />, document.body)}
     </>
   );
 }
@@ -52,6 +55,14 @@ function Gallery({ url, title, onClose }: { url: string; title: string; onClose:
     },
     [folderId],
   );
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
 
   // Si ya hay permiso en esta sesión, carga directo (sin ventana emergente).
   useEffect(() => {
