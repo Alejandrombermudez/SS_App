@@ -97,7 +97,7 @@ describe('buildPlan', () => {
 
   it('no pisa misiones creadas en la app con el mismo número', () => {
     const existing = empty();
-    existing.orders.set('16', { number: 16, source: 'app' });
+    existing.orders.set('16', { number: 16, source: 'app', deleted: false });
     expect(buildPlan(exp, existing).orders[0].kind).toBe('conflict');
   });
 
@@ -111,6 +111,18 @@ describe('buildPlan', () => {
       services: (data.services as Record<string, unknown>[]).map(reorder),
       parts: (data.parts as Record<string, unknown>[]).map(reorder),
     });
+    expect(buildPlan(exp, existing).orders[0].kind).toBe('same');
+  });
+
+  it('marca como activas (deleted:false) las misiones existentes que no tienen el campo, sin reabrir las eliminadas', () => {
+    const first = buildPlan(exp, empty());
+    const existing = empty();
+    const { deleted: _d, ...legacy } = first.orders[0].data as Record<string, unknown>;
+    existing.orders.set('16', legacy);
+    const plan = buildPlan(exp, existing);
+    expect(plan.orders[0]).toMatchObject({ kind: 'update', changes: ['deleted'], data: { deleted: false } });
+
+    existing.orders.set('16', { ...legacy, deleted: true });
     expect(buildPlan(exp, existing).orders[0].kind).toBe('same');
   });
 

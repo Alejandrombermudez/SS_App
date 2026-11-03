@@ -169,12 +169,17 @@ export function buildPlan(
     };
     const label = `Nº ${o.number} · ${o.vehicle_plate} · ${o.status}`;
     const current = existing.orders.get(id);
-    if (!current) return { id, label, kind: 'new', changes: [], data };
+    if (!current) return { id, label, kind: 'new', changes: [], data: { ...data, deleted: false } };
+    // Misiones creadas antes de que existiera el campo "deleted": se marcan como activas.
+    const needsDeleted = current.deleted === undefined;
     if (current.source !== 'access') {
+      if (needsDeleted) return { id, label, kind: 'update', changes: ['deleted'], data: { deleted: false } };
       return { id, label, kind: 'conflict', changes: [], data, note: 'Ya existe una misión creada en la app con este número; no se toca.' };
     }
     const changes = Object.keys(data).filter((k) => !same(current[k], (data as Record<string, unknown>)[k]));
-    return { id, label, kind: changes.length ? 'update' : 'same', changes, data };
+    // Se agrega `deleted: false` solo si falta; nunca se pisa una misión ya eliminada en la app.
+    if (needsDeleted) changes.push('deleted');
+    return { id, label, kind: changes.length ? 'update' : 'same', changes, data: needsDeleted ? { ...data, deleted: false } : data };
   });
 
   const professions = exp.professions.map(
