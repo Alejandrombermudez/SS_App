@@ -95,7 +95,20 @@ describe.runIf(existsSync(EXPORT))('migración real de Access con las reglas de 
           const ref = op.id ? doc(db, op.collection, op.id) : doc(collection(db, op.collection));
           batch.set(ref, materialize(op.data, sdk), { merge: op.merge });
         }
-        await batch.commit();
+        try {
+          await batch.commit();
+        } catch (err) {
+          // Aísla qué documento rechazan las reglas para poder corregirlo.
+          for (const op of ops.slice(i, i + size)) {
+            const one = writeBatch(db);
+            const ref = op.id ? doc(db, op.collection, op.id) : doc(collection(db, op.collection));
+            one.set(ref, materialize(op.data, sdk), { merge: op.merge });
+            await one.commit().catch(() => {
+              throw new Error(`Reglas rechazan ${op.collection}/${op.id} -> ${JSON.stringify(op.data).slice(0, 400)}`);
+            });
+          }
+          throw err;
+        }
         written += Math.min(size, ops.length - i);
       }
     }

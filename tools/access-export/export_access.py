@@ -129,6 +129,10 @@ def clean_email(raw: str, client_id: str) -> str:
     return fixed
 
 
+# Errores de captura frecuentes en la categoría de la moto.
+CATEGORY_FIX = {"BAJA": "BAJO", "MEDIA": "MEDIO", "ALTA": "ALTO"}
+
+
 def export(db_path: str, source_name: str) -> dict:
     conn = pyodbc.connect(
         "Driver={Microsoft Access Driver (*.mdb, *.accdb)};" f"Dbq={db_path};ReadOnly=1;",
@@ -171,7 +175,10 @@ def export(db_path: str, source_name: str) -> dict:
     for r in rows(cur, "SELECT * FROM [2_Vehiculos]"):
         plate = re.sub(r"[^0-9A-Z]", "", text(r["Placa"]).upper())
         owner_by_plate[plate] = id_str(r["Propietario"])
-        category_by_plate[plate] = text(r["Categoria"]).upper()
+        raw_cat = text(r["Categoria"]).upper()
+        category_by_plate[plate] = CATEGORY_FIX.get(raw_cat, raw_cat)
+        if raw_cat != category_by_plate[plate]:
+            warnings.append(f"Moto {plate}: categoría '{raw_cat}' corregida a '{category_by_plate[plate]}'")
         # Kilometraje más reciente registrado en sus órdenes (en Access el km vive en la orden).
         mine = [o for o in orders_raw if re.sub(r"[^0-9A-Z]", "", text(o["Vehiculo"]).upper()) == plate]
         mine.sort(key=lambda o: (o["Ingreso"] or dt.datetime.min, o["Id"]))
