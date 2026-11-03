@@ -165,7 +165,10 @@ service cloud.firestore {
                                'discount_pct', 'services', 'parts', 'subtotal', 'discount',
                                'services_total', 'parts_total', 'total', 'vehicle_category',
                                'created_at', 'created_by', 'updated_at', 'updated_by', 'source',
-                               'deleted', 'deleted_reason', 'deleted_at', 'deleted_by'])
+                               'deleted', 'deleted_reason', 'deleted_at', 'deleted_by', 'photos_url'])
+        // Solo enlaces a carpetas de Google Drive (las fotos viven en el Drive del taller).
+        && (!('photos_url' in d) || (d.photos_url is string
+              && (d.photos_url == '' || d.photos_url.matches('^https://drive[.]google[.]com/.{1,400}$'))))
         && d.number is int && d.number > 0
         && d.status in ['Cotización', 'Orden de Servicio']
         && d.vehicle_plate is string && d.vehicle_plate.size() > 0

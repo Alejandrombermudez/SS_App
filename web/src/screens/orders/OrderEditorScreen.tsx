@@ -314,6 +314,25 @@ export default function OrderEditorScreen() {
             </div>
 
             <div>
+              <Label>Fotos (enlace a la carpeta de Drive)</Label>
+              <input
+                value={draft.photosUrl}
+                onChange={(e) => update({ photosUrl: e.target.value.trim() })}
+                inputMode="url"
+                placeholder="https://drive.google.com/drive/folders/…"
+                className={fieldClass}
+              />
+              {draft.photosUrl && !/^https:\/\/drive\.google\.com\/./.test(draft.photosUrl) && (
+                <p className="mt-1 text-xs text-amber-300">Debe ser un enlace de Google Drive (drive.google.com).</p>
+              )}
+              {draft.photosUrl && /^https:\/\/drive\.google\.com\/./.test(draft.photosUrl) && (
+                <a href={draft.photosUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-[#E63946] underline">
+                  Abrir carpeta
+                </a>
+              )}
+            </div>
+
+            <div>
               <Label>Observaciones iniciales</Label>
               <AutoTextarea
                 value={draft.initialNotes}

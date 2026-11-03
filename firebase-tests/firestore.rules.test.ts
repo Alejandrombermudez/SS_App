@@ -282,6 +282,18 @@ describe('misiones (órdenes y cotizaciones)', () => {
     await assertSucceeds(updateDoc(doc(dbAs(OWNER), 'orders', String(n)), { km: 5000, updated_by: OWNER, updated_at: serverTimestamp() }));
   });
 
+  it('el enlace de fotos solo admite carpetas de Google Drive', async () => {
+    const db = dbAs(STAFF);
+    const n = await createNext(db, STAFF);
+    const ref = doc(db, 'orders', String(n));
+    const edit = (photos_url: string) => updateDoc(ref, { photos_url, updated_by: STAFF, updated_at: serverTimestamp() });
+    await assertSucceeds(edit('https://drive.google.com/drive/folders/1mAI9MbtMiB05Nm_A1IbcDSWf062Et2uG'));
+    await assertSucceeds(edit(''));
+    await assertFails(edit('https://evil.example.com/drive.google.com/x'));
+    await assertFails(edit('http://drive.google.com/drive/folders/abc'));
+    await assertFails(edit('https://drive-google.com/drive/folders/abc'));
+  });
+
   describe('eliminar y reabrir', () => {
     const del = (by: string, reason: unknown = 'Cliente no aceptó la cotización') => ({
       deleted: true,

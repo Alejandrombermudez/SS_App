@@ -7,8 +7,15 @@ import type { UserRole } from '../types';
 interface AuthContextValue {
   user: User | null;
   role: UserRole;
-  /** Cédula del cliente, cuando role === 'client'. */
+  /** Cédula del cliente, cuando se actúa como cliente (role === 'client'). */
   clientId: string | null;
+  /** La cuenta es personal del taller Y además cliente: puede elegir con qué rol entrar. */
+  canSwitch: boolean;
+  /** Es personal y cliente, y todavía no eligió el modo de esta sesión. */
+  needsModeChoice: boolean;
+  chooseMode: (mode: 'staff' | 'client') => void;
+  /** Vuelve a la pantalla "¿Cómo quieres entrar?". */
+  switchMode: () => void;
   loading: boolean;
   error: string | null;
   signInWithGoogle: () => Promise<void>;
@@ -43,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [staffRole, setStaffRole] = useState<UserRole | undefined>(undefined);
   const [clientLink, setClientLink] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<'staff' | 'client' | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -74,8 +82,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [email, isOwner]);
 
   // Cualquier otra cuenta puede ser un cliente del taller: su correo apunta a una cédula.
+  // (También para el personal: puede ser cliente a la vez y elegir con qué rol entrar.)
   useEffect(() => {
-    if (!email || isOwner) {
+    if (!email) {
       setClientLink(undefined);
       return;
     }
@@ -85,10 +94,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (snap) => setClientLink((snap.data()?.client_id as string | undefined) ?? null),
       () => setClientLink(null),
     );
-  }, [email, isOwner]);
+  }, [email]);
+
+  // El modo elegido dura lo que dure la sesión del navegador; al cambiar de cuenta se pregunta de nuevo.
+  useEffect(() => {
+    if (!email) {
+      setMode(null);
+      return;
+    }
+    const saved = sessionStorage.getItem(`ss-mode:${email}`);
+    setMode(saved === 'staff' || saved === 'client' ? saved : null);
+  }, [email]);
 
   const isStaff = staffRole === 'admin' || staffRole === 'staff';
-  const role: UserRole = !user
+  const staffUser = isOwner || isStaff;
+  const canSwitch = staffUser && !!clientLink;
+  const needsModeChoice = canSwitch && mode === null;
+  const baseRole: UserRole = !user
     ? 'none'
     : isOwner
       ? 'admin'
@@ -97,8 +119,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         : clientLink
           ? 'client'
           : 'none';
+  // Un miembro del personal que entra "como cliente" se comporta como cliente en toda la app.
+  const role: UserRole = canSwitch && mode === 'client' ? 'client' : baseRole;
   const clientId = role === 'client' ? clientLink ?? null : null;
-  const loading = authLoading || (!!user && !isOwner && (staffRole === undefined || clientLink === undefined));
+  const loading = authLoading || (!!user && ((!isOwner && staffRole === undefined) || clientLink === undefined));
+
+  function chooseMode(next: 'staff' | 'client') {
+    sessionStorage.setItem(`ss-mode:${email}`, next);
+    setMode(next);
+  }
+
+  function switchMode() {
+    sessionStorage.removeItem(`ss-mode:${email}`);
+    setMode(null);
+  }
 
   async function signInWithGoogle() {
     setError(null);
@@ -111,11 +145,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOutUser() {
+    sessionStorage.removeItem(`ss-mode:${email}`);
     await signOut(auth);
   }
 
   return (
-    <AuthContext.Provider value={{ user, role, clientId, loading, error, signInWithGoogle, signOutUser }}>
+    <AuthContext.Provider value={{ user, role, clientId, canSwitch, needsModeChoice, chooseMode, switchMode, loading, error, signInWithGoogle, signOutUser }}>
       {children}
     </AuthContext.Provider>
   );

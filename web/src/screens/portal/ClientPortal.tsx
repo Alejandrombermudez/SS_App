@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, Eye, LogOut, MessageCircle } from 'lucide-react';
+import { ChevronRight, Eye, Images, LogOut, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBusinessSettings, useClient, useOrdersWhere, useVehiclesOf } from '../../data/hooks';
 import { Plate, Spinner, StatusChip } from '../../components/ui';
@@ -14,7 +14,7 @@ import { EXPIRY_LABEL, expiryState, type ExpiryState } from '../../utils/vehicle
  */
 export default function ClientPortal({ previewOf }: { previewOf?: string }) {
   const navigate = useNavigate();
-  const { clientId: myClientId, user, signOutUser } = useAuth();
+  const { clientId: myClientId, user, signOutUser, canSwitch, switchMode } = useAuth();
   const clientId = previewOf ?? myClientId;
   const client = useClient(clientId);
   const vehicles = useVehiclesOf(clientId);
@@ -110,6 +110,16 @@ export default function ClientPortal({ previewOf }: { previewOf?: string }) {
                       <span className="font-bold">{formatCOP(o.total)}</span>
                       <ChevronRight className="h-4 w-4 shrink-0 text-gray-500" />
                     </button>
+                    {o.photosUrl && (
+                      <a
+                        href={o.photosUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-white/10 py-2 text-sm hover:bg-white/20"
+                      >
+                        <Images className="h-4 w-4" /> Ver fotos de esta misión
+                      </a>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -124,6 +134,12 @@ export default function ClientPortal({ previewOf }: { previewOf?: string }) {
               >
                 <MessageCircle className="h-5 w-5" /> Escríbenos por WhatsApp
               </a>
+            )}
+
+            {canSwitch && !previewOf && (
+              <button type="button" onClick={switchMode} className="mx-auto mt-6 block text-sm text-white/60 underline hover:text-white">
+                Cambiar a modo administrador
+              </button>
             )}
 
             {!previewOf && (

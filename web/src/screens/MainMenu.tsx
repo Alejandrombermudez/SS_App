@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import InstallPrompt from '../components/InstallPrompt';
 
 export default function MainMenu() {
-  const { role, user, signOutUser } = useAuth();
+  const { role, user, signOutUser, canSwitch, switchMode } = useAuth();
   const navigate = useNavigate();
 
   const title = role === 'admin' ? 'Panel de Administrador' : 'Estación de Trabajo';
@@ -49,6 +49,12 @@ export default function MainMenu() {
               Configuración
             </MenuButton>
           </>
+        )}
+
+        {canSwitch && (
+          <button type="button" onClick={switchMode} className="mt-2 text-sm text-white/60 underline hover:text-white">
+            Cambiar a modo cliente
+          </button>
         )}
 
         <div className="mt-6">

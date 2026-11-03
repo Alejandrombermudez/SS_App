@@ -168,6 +168,7 @@ export function orderFromData(id: string, data: Record<string, any>): Order {
     createdAt: toDate(data.created_at),
     updatedAt: toDate(data.updated_at),
     source: data.source ?? '',
+    photosUrl: data.photos_url ?? '',
     deleted: data.deleted === true,
     deletedReason: data.deleted_reason ?? '',
     deletedBy: data.deleted_by ?? '',
@@ -197,6 +198,7 @@ export function orderToFirestore(o: Order) {
     parts_total: o.partsTotal,
     total: o.total,
     vehicle_category: o.vehicleCategory,
+    photos_url: o.photosUrl,
   };
 }
 

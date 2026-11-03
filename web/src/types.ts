@@ -152,6 +152,8 @@ export interface Order extends OrderTotals {
   updatedAt: Date | null;
   source: string; // 'access' para el historial migrado
   // Las misiones no se borran: se eliminan con una razón y se pueden reabrir.
+  /** Carpeta de Drive con las fotos de la misión (enlace compartido con el cliente). */
+  photosUrl: string;
   deleted: boolean;
   deletedReason: string;
   deletedBy: string;
