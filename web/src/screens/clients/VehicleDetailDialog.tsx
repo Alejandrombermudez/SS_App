@@ -168,9 +168,9 @@ export default function VehicleDetailDialog({
                   className="flex w-full items-center gap-2 rounded-md bg-black/20 px-3 py-2 text-left text-sm hover:bg-black/30"
                 >
                   <span className="font-mono text-xs">Nº {formatOrderNumber(o.number)}</span>
-                  <StatusChip status={o.status} />
+                  <StatusChip status={o.status} deleted={o.deleted} />
                   <span className="ml-auto text-xs text-gray-400">{formatDate(o.entryDate)}</span>
-                  <span className="w-24 text-right font-semibold">{formatCOP(o.total)}</span>
+                  <span className={`w-24 text-right font-semibold ${o.deleted ? 'line-through opacity-60' : ''}`}>{formatCOP(o.total)}</span>
                 </button>
               ))
             )}

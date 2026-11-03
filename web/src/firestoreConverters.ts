@@ -22,6 +22,8 @@ export const clientConverter: FirestoreDataConverter<Client> = {
       instagram: client.instagram,
       birth_date: client.birthDate,
       gender: client.gender,
+      first_name: client.firstName,
+      last_name: client.lastName,
     };
   },
   fromFirestore(snapshot: QueryDocumentSnapshot): Client {
@@ -37,6 +39,8 @@ export const clientConverter: FirestoreDataConverter<Client> = {
       instagram: data.instagram ?? '',
       birthDate: data.birth_date ?? '',
       gender: data.gender ?? '',
+      firstName: data.first_name ?? '',
+      lastName: data.last_name ?? '',
     };
   },
 };
@@ -164,6 +168,10 @@ export function orderFromData(id: string, data: Record<string, any>): Order {
     createdAt: toDate(data.created_at),
     updatedAt: toDate(data.updated_at),
     source: data.source ?? '',
+    deleted: data.deleted === true,
+    deletedReason: data.deleted_reason ?? '',
+    deletedBy: data.deleted_by ?? '',
+    deletedAt: toDate(data.deleted_at),
   };
 }
 

@@ -10,7 +10,7 @@ import { formatCOP, formatDate, formatOrderNumber } from '../../utils/format';
 import { CenteredMessage, Plate, ScreenHeader, Spinner, StatusChip } from '../../components/ui';
 
 const PAGE = 60;
-type Filter = 'all' | 'Cotización' | 'Orden de Servicio';
+type Filter = 'all' | 'Cotización' | 'Orden de Servicio' | 'deleted';
 
 export default function OrdersScreen() {
   const navigate = useNavigate();
@@ -41,7 +41,7 @@ export default function OrdersScreen() {
   const visible = useMemo(() => {
     const tokens = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return orders.filter((o) => {
-      if (filter !== 'all' && o.status !== filter) return false;
+      if (filter === 'deleted' ? !o.deleted : filter !== 'all' && (o.deleted || o.status !== filter)) return false;
       if (tokens.length === 0) return true;
       const text = `${o.number} ${formatOrderNumber(o.number)} ${o.vehiclePlate} ${clientNames.get(o.clientId) ?? ''}`.toLowerCase();
       return tokens.every((t) => text.includes(t));
@@ -79,6 +79,7 @@ export default function OrdersScreen() {
               ['all', 'Todas'],
               ['Cotización', 'Cotizaciones'],
               ['Orden de Servicio', 'Órdenes'],
+              ['deleted', 'Eliminadas'],
             ] as [Filter, string][]
           ).map(([key, label]) => (
             <button
@@ -113,12 +114,12 @@ export default function OrdersScreen() {
                 <button
                   type="button"
                   onClick={() => navigate(`/orders/${o.number}`)}
-                  className="flex w-full items-center gap-3 rounded-lg bg-[#112240] p-3 text-left hover:bg-[#15294d]"
+                  className={`flex w-full items-center gap-3 rounded-lg bg-[#112240] p-3 text-left hover:bg-[#15294d] ${o.deleted ? 'opacity-60' : ''}`}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-sm font-bold">Nº {formatOrderNumber(o.number)}</span>
-                      <StatusChip status={o.status} />
+                      <StatusChip status={o.status} deleted={o.deleted} />
                     </div>
                     <div className="mt-1.5 flex items-center gap-2">
                       <Plate plate={o.vehiclePlate} size="sm" />
@@ -126,7 +127,8 @@ export default function OrdersScreen() {
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="font-bold">{formatCOP(o.total)}</p>
+                    <p className={`font-bold ${o.deleted ? 'line-through' : ''}`}>{formatCOP(o.total)}</p>
+                    {o.deleted && o.deletedReason && <p className="max-w-[10rem] truncate text-[11px] text-red-200">{o.deletedReason}</p>}
                     <p className="text-xs text-gray-400">{formatDate(o.entryDate)}</p>
                   </div>
                 </button>

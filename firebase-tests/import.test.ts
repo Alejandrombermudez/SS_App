@@ -138,10 +138,10 @@ describe.runIf(existsSync(EXPORT))('migración real de Access con las reglas de 
     expect(withEmail.length).toBeGreaterThan(20);
     for (const c of withEmail) {
       const db = as(c.email);
-      const mine = await getDocs(query(collection(db, 'orders'), where('client_id', '==', c.id)));
+      const mine = await getDocs(query(collection(db, 'orders'), where('client_id', '==', c.id), where('deleted', '==', false)));
       expect(mine.size, c.id).toBe(exp.orders.filter((o) => o.client_id === c.id).length);
       const other = exp.clients.find((x) => x.id !== c.id)!;
-      await expect(getDocs(query(collection(db, 'orders'), where('client_id', '==', other.id)))).rejects.toThrow();
+      await expect(getDocs(query(collection(db, 'orders'), where('client_id', '==', other.id), where('deleted', '==', false)))).rejects.toThrow();
     }
   });
 
@@ -157,7 +157,7 @@ describe.runIf(existsSync(EXPORT))('migración real de Access con las reglas de 
         service_type: 'Especifico', entry_date: '2026-09-25', exit_date: '', km: 0, initial_notes: '', final_notes: '',
         discount_pct: 0, services: [], parts: [], subtotal: 0, discount: 0, services_total: 0, parts_total: 0, total: 0,
         vehicle_category: 'BAJO', created_at: serverTimestamp(), created_by: STAFF, updated_at: serverTimestamp(),
-        updated_by: STAFF, source: 'app',
+        updated_by: STAFF, source: 'app', deleted: false,
       });
       return n;
     });

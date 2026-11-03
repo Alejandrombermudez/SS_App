@@ -91,7 +91,11 @@ export function useClients(): Loadable<Client[]> {
 }
 
 /** Misiones filtradas por un campo (placa o cliente), de la más reciente a la más antigua. */
-export function useOrdersWhere(field: 'vehicle_plate' | 'client_id', value: string | null): Loadable<Order[]> {
+export function useOrdersWhere(
+  field: 'vehicle_plate' | 'client_id',
+  value: string | null,
+  activeOnly = false,
+): Loadable<Order[]> {
   const [state, setState] = useState<Loadable<Order[]>>({ data: [], loading: !!value, error: null });
   useEffect(() => {
     if (!value) {
@@ -100,7 +104,10 @@ export function useOrdersWhere(field: 'vehicle_plate' | 'client_id', value: stri
     }
     // Se ordena en el cliente para no necesitar un índice compuesto.
     return onSnapshot(
-      query(collection(db, 'orders'), where(field, '==', value)),
+      // Los clientes solo pueden leer las activas: las reglas exigen el filtro deleted == false.
+      activeOnly
+        ? query(collection(db, 'orders'), where(field, '==', value), where('deleted', '==', false))
+        : query(collection(db, 'orders'), where(field, '==', value)),
       (snap) =>
         setState({
           data: snap.docs.map((d) => orderFromData(d.id, d.data())).sort((a, b) => b.number - a.number),
@@ -109,7 +116,7 @@ export function useOrdersWhere(field: 'vehicle_plate' | 'client_id', value: stri
         }),
       (err) => setState({ data: [], loading: false, error: describe(err) }),
     );
-  }, [field, value]);
+  }, [field, value, activeOnly]);
   return state;
 }
 

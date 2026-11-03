@@ -188,6 +188,9 @@ export default function ClientScreen() {
       instagram,
       birthDate,
       gender,
+      // Se conservan nombre/apellido de Access mientras el nombre completo no cambie.
+      firstName: client && client.name === name ? client.firstName : '',
+      lastName: client && client.name === name ? client.lastName : '',
     };
     try {
       await setDoc(doc(db, 'clients', id).withConverter(clientConverter), clientToSave, { merge: true });

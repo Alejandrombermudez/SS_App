@@ -18,7 +18,7 @@ export default function ClientPortal({ previewOf }: { previewOf?: string }) {
   const clientId = previewOf ?? myClientId;
   const client = useClient(clientId);
   const vehicles = useVehiclesOf(clientId);
-  const orders = useOrdersWhere('client_id', clientId);
+  const orders = useOrdersWhere('client_id', clientId, true);
   const business = useBusinessSettings();
 
   const firstName = (client.data?.name ?? '').split(' ')[0];

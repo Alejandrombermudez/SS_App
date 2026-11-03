@@ -50,10 +50,13 @@ input, textarea, select {
   .invoice-screen > div {
     padding: 0 !important;
   }
-  .invoice-paper {
+  .invoice-outer {
+    height: auto !important;
     max-width: none !important;
-    padding: 0 !important;
+  }
+  .invoice-paper {
     box-shadow: none !important;
+    transform: none !important;
   }
   * {
     -webkit-print-color-adjust: exact;

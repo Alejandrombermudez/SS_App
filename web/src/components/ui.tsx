@@ -43,8 +43,15 @@ export function Plate({ plate, size = 'md' }: { plate: string; size?: 'sm' | 'md
   );
 }
 
-export function StatusChip({ status }: { status: string }) {
+export function StatusChip({ status, deleted = false }: { status: string; deleted?: boolean }) {
   const isOrder = status === 'Orden de Servicio';
+  if (deleted) {
+    return (
+      <span className="inline-block whitespace-nowrap rounded-full bg-red-500/20 px-2 py-0.5 text-[11px] font-semibold text-red-200">
+        Eliminada
+      </span>
+    );
+  }
   return (
     <span
       className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Check, FileText, Phone, Plus, Trash2, X } from 'lucide-react';
+import { Ban, Check, FileText, Phone, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useClient, useOrder, useServices, useVehicle } from '../../data/hooks';
-import { deleteOrder, saveOrder } from '../../data/orderRepo';
+import { discardOrder, reopenOrder, saveOrder } from '../../data/orderRepo';
 import {
   ORDER_STATUSES,
   PART_TYPES,
@@ -18,6 +18,8 @@ import { calculateCategory, getCategoryColor } from '../../utils/vehicleUtils';
 import { formatCOP, formatNumber, formatOrderNumber, SERVICE_TYPE_LABELS, todayIso } from '../../utils/format';
 import { CenteredMessage, Plate, ScreenHeader, Section, Spinner, StatusChip } from '../../components/ui';
 import ServicePickerDialog from './ServicePickerDialog';
+import DiscardDialog from './DiscardDialog';
+import Modal from '../../components/Modal';
 
 const DISCOUNTS = [0, 5, 10, 15, 20, 50];
 
@@ -28,7 +30,7 @@ export default function OrderEditorScreen() {
   const { id } = useParams();
   const number = Number.parseInt(id ?? '', 10) || null;
   const navigate = useNavigate();
-  const { user, role } = useAuth();
+  const { user } = useAuth();
   const order = useOrder(number);
   const vehicle = useVehicle(order.data?.vehiclePlate ?? null);
   const client = useClient(order.data?.clientId ?? null);
@@ -39,6 +41,8 @@ export default function OrderEditorScreen() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+  const [showDiscard, setShowDiscard] = useState(false);
+  const [showEmptyClose, setShowEmptyClose] = useState(false);
   const baseUpdatedAt = useRef<number | null>(null);
 
   // Mientras no haya cambios locales, la pantalla sigue en vivo lo que haya en Firestore.
@@ -115,6 +119,11 @@ export default function OrderEditorScreen() {
 
   function leave(to: string) {
     if (dirty && !window.confirm('Tienes cambios sin guardar. ¿Salir sin guardar?')) return;
+    // Un borrador vacío no suele ser una cotización real: se ofrece descartarlo al cerrar.
+    if (!dirty && !draft!.deleted && draft!.status === 'Cotización' && draft!.services.length === 0 && draft!.parts.length === 0) {
+      setShowEmptyClose(true);
+      return;
+    }
     navigate(to);
   }
 
@@ -123,10 +132,15 @@ export default function OrderEditorScreen() {
     navigate(`/orders/${draft!.number}/documento`);
   }
 
-  async function remove() {
-    if (!window.confirm(`¿Eliminar la misión Nº ${formatOrderNumber(draft!.number)}? No se puede deshacer.`)) return;
-    await deleteOrder(draft!.number);
-    navigate('/orders', { replace: true });
+  async function discard(reason: string) {
+    await discardOrder(draft!.number, reason, user!.email!.toLowerCase());
+    setShowDiscard(false);
+    setShowEmptyClose(false);
+    setDirty(false);
+  }
+
+  async function reopen() {
+    await reopenOrder(draft!.number, user!.email!.toLowerCase());
   }
 
   const indexedServices = draft.services.map((l, index) => ({ ...l, index }));
@@ -135,7 +149,7 @@ export default function OrderEditorScreen() {
     <div className="flex min-h-dvh flex-col bg-[#0A192F] text-white">
       <ScreenHeader
         title={`Misión Nº ${formatOrderNumber(draft.number)}`}
-        subtitle={<StatusChip status={draft.status} />}
+        subtitle={<StatusChip status={draft.status} deleted={draft.deleted} />}
         onBack={() => leave('/orders')}
         actions={
           <>
@@ -146,9 +160,13 @@ export default function OrderEditorScreen() {
             >
               <FileText className="h-4 w-4" /> Documento
             </button>
-            {role === 'admin' && (
-              <button type="button" onClick={() => void remove()} aria-label="Eliminar misión" className="rounded p-2 text-gray-400 hover:text-[#E63946]">
-                <Trash2 className="h-4 w-4" />
+            {!draft.deleted && (
+              <button
+                type="button"
+                onClick={() => setShowDiscard(true)}
+                className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-gray-300 hover:bg-white/10 hover:text-[#ff8a93]"
+              >
+                <Trash2 className="h-4 w-4" /> <span className="hidden sm:inline">{draft.status === 'Cotización' ? 'Descartar' : 'Eliminar'}</span>
               </button>
             )}
           </>
@@ -164,7 +182,31 @@ export default function OrderEditorScreen() {
         </div>
       )}
 
+      {draft.deleted && (
+        <div className="border-b border-red-400/30 bg-red-500/15 px-4 py-3 text-sm text-red-100">
+          <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-3">
+            <Ban className="h-5 w-5 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">Misión eliminada — solo lectura</p>
+              <p className="text-red-100/80">
+                Razón: {draft.deletedReason || '—'}
+                {draft.deletedBy && ` · ${draft.deletedBy}`}
+                {draft.deletedAt && ` · ${draft.deletedAt.toLocaleDateString('es-CO')}`}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void reopen()}
+              className="flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 font-semibold text-black"
+            >
+              <RotateCcw className="h-4 w-4" /> Reabrir
+            </button>
+          </div>
+        </div>
+      )}
+
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-36 pt-4">
+        <fieldset disabled={draft.deleted} className="contents">
         {/* MOTO Y CLIENTE */}
         <div className="rounded-lg bg-[#112240] p-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -414,6 +456,7 @@ export default function OrderEditorScreen() {
           {draft.createdBy && `Creada por ${draft.createdBy}`}
           {draft.updatedBy && draft.updatedBy !== draft.createdBy && ` · Última edición: ${draft.updatedBy}`}
         </p>
+        </fieldset>
       </main>
 
       {/* BARRA INFERIOR */}
@@ -424,7 +467,9 @@ export default function OrderEditorScreen() {
             <p className="text-xl font-bold">{formatCOP(totals.total)}</p>
             {saveError && <p className="text-xs text-red-400">{saveError}</p>}
           </div>
-          {dirty ? (
+          {draft.deleted ? (
+            <span className="text-sm text-red-200">Eliminada</span>
+          ) : dirty ? (
             <button
               type="button"
               onClick={() => void save()}
@@ -440,6 +485,44 @@ export default function OrderEditorScreen() {
           )}
         </div>
       </div>
+
+      {showDiscard && (
+        <DiscardDialog
+          number={draft.number}
+          isQuote={draft.status === 'Cotización'}
+          onCancel={() => setShowDiscard(false)}
+          onConfirm={discard}
+        />
+      )}
+
+      {showEmptyClose && (
+        <Modal onDismiss={() => setShowEmptyClose(false)} maxWidthClassName="max-w-sm">
+          <div className="p-5 text-white">
+            <h3 className="text-lg font-bold">Esta cotización está vacía</h3>
+            <p className="mt-1 text-sm text-gray-300">
+              La Nº {formatOrderNumber(draft.number)} no tiene servicios ni recursos. ¿La dejas como borrador o la descartas?
+            </p>
+            <div className="mt-5 grid gap-2">
+              <button type="button" onClick={() => navigate('/orders')} className="rounded-md bg-white/10 py-2.5 text-sm hover:bg-white/20">
+                Dejar como borrador
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEmptyClose(false);
+                  setShowDiscard(true);
+                }}
+                className="rounded-md bg-[#E63946] py-2.5 text-sm font-semibold"
+              >
+                Descartar…
+              </button>
+              <button type="button" onClick={() => setShowEmptyClose(false)} className="py-2 text-sm text-gray-400 hover:text-white">
+                Seguir editando
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {showPicker && (
         <ServicePickerDialog

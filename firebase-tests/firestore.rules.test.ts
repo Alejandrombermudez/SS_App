@@ -60,6 +60,7 @@ function order(number: number, by: string, extra: Record<string, unknown> = {}) 
     created_by: by,
     updated_at: serverTimestamp(),
     updated_by: by,
+    deleted: false,
     ...extra,
   };
 }
@@ -85,11 +86,11 @@ beforeEach(async () => {
     await setDoc(doc(db, 'vehicles', 'ABC12D'), { brand: 'Yamaha', client_id: '1000' });
     await setDoc(doc(db, 'services', '8001'), { item_code: '8001', price: 100000, cost_type: 'Fijo' });
     await setDoc(doc(db, 'counters', 'orders'), { last: 127 });
-    await setDoc(doc(db, 'orders', '127'), { number: 127, created_by: OWNER, client_id: '1000' });
+    await setDoc(doc(db, 'orders', '127'), { number: 127, created_by: OWNER, client_id: '1000', deleted: false });
     // Otro cliente, con su moto y su misión.
     await setDoc(doc(db, 'clients', '2000'), { name: 'Otro cliente' });
     await setDoc(doc(db, 'vehicles', 'OTR99X'), { brand: 'AKT', client_id: '2000' });
-    await setDoc(doc(db, 'orders', '126'), { number: 126, created_by: OWNER, client_id: '2000' });
+    await setDoc(doc(db, 'orders', '126'), { number: 126, created_by: OWNER, client_id: '2000', deleted: false });
     // El cliente 1000 entra al portal con su Gmail.
     await setDoc(doc(db, 'client_accounts', CLIENT), { client_id: '1000' });
     await setDoc(doc(db, 'settings', 'business'), { name: 'SS' });
@@ -134,7 +135,7 @@ describe('portal de clientes', () => {
     await assertSucceeds(getDoc(doc(db, 'vehicles', 'ABC12D')));
     await assertSucceeds(getDoc(doc(db, 'orders', '127')));
     await assertSucceeds(getDocs(query(collection(db, 'vehicles'), where('client_id', '==', '1000'))));
-    await assertSucceeds(getDocs(query(collection(db, 'orders'), where('client_id', '==', '1000'))));
+    await assertSucceeds(getDocs(query(collection(db, 'orders'), where('client_id', '==', '1000'), where('deleted', '==', false))));
     await assertSucceeds(getDoc(doc(db, 'settings', 'business')));
     await assertSucceeds(getDoc(doc(db, 'client_accounts', CLIENT)));
   });
@@ -144,7 +145,7 @@ describe('portal de clientes', () => {
     await assertFails(getDoc(doc(db, 'clients', '2000')));
     await assertFails(getDoc(doc(db, 'vehicles', 'OTR99X')));
     await assertFails(getDoc(doc(db, 'orders', '126')));
-    await assertFails(getDocs(query(collection(db, 'orders'), where('client_id', '==', '2000'))));
+    await assertFails(getDocs(query(collection(db, 'orders'), where('client_id', '==', '2000'), where('deleted', '==', false))));
     await assertFails(getDocs(collection(db, 'orders')));
     await assertFails(getDocs(collection(db, 'clients')));
     await assertFails(getDoc(doc(db, 'services', '8001')));
@@ -279,6 +280,49 @@ describe('misiones (órdenes y cotizaciones)', () => {
     await assertFails(deleteDoc(ref));
     // Otro miembro del personal puede seguir la misión, firmando con su propio correo.
     await assertSucceeds(updateDoc(doc(dbAs(OWNER), 'orders', String(n)), { km: 5000, updated_by: OWNER, updated_at: serverTimestamp() }));
+  });
+
+  describe('eliminar y reabrir', () => {
+    const del = (by: string, reason: unknown = 'Cliente no aceptó la cotización') => ({
+      deleted: true,
+      deleted_reason: reason,
+      deleted_by: by,
+      deleted_at: serverTimestamp(),
+      updated_by: by,
+      updated_at: serverTimestamp(),
+    });
+
+    it('se elimina con razón obligatoria; sin razón o con razón corta se rechaza', async () => {
+      const db = dbAs(STAFF);
+      const n = await createNext(db, STAFF);
+      const ref = doc(db, 'orders', String(n));
+      await assertFails(updateDoc(ref, del(STAFF, '')));
+      await assertFails(updateDoc(ref, del(STAFF, '   ')));
+      await assertFails(updateDoc(ref, del(STAFF, 'no')));
+      await assertFails(updateDoc(ref, { ...del(STAFF), deleted_by: OWNER }));
+      await assertSucceeds(updateDoc(ref, del(STAFF)));
+    });
+
+    it('una misión eliminada solo se puede reabrir: no se edita ni se borra', async () => {
+      const db = dbAs(STAFF);
+      const n = await createNext(db, STAFF);
+      const ref = doc(db, 'orders', String(n));
+      await assertSucceeds(updateDoc(ref, del(STAFF)));
+      await assertFails(updateDoc(ref, { km: 99, updated_by: STAFF, updated_at: serverTimestamp() }));
+      await assertFails(deleteDoc(doc(dbAs(OWNER), 'orders', String(n))));
+      await assertSucceeds(updateDoc(doc(dbAs(OWNER), 'orders', String(n)), { deleted: false, updated_by: OWNER, updated_at: serverTimestamp() }));
+      await assertSucceeds(updateDoc(ref, { km: 99, updated_by: STAFF, updated_at: serverTimestamp() }));
+    });
+
+    it('el cliente no ve las misiones eliminadas', async () => {
+      await env.withSecurityRulesDisabled(async (ctx) => {
+        await setDoc(doc(ctx.firestore(), 'orders', '125'), { number: 125, client_id: '1000', deleted: true });
+      });
+      const c = dbAs(CLIENT);
+      await assertFails(getDoc(doc(c, 'orders', '125')));
+      await assertSucceeds(getDocs(query(collection(c, 'orders'), where('client_id', '==', '1000'), where('deleted', '==', false))));
+      await assertFails(getDocs(query(collection(c, 'orders'), where('client_id', '==', '1000'))));
+    });
   });
 
   it('los admins migran números arbitrarios y ajustan el contador', async () => {

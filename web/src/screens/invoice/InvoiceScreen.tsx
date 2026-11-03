@@ -88,8 +88,8 @@ export default function InvoiceScreen() {
       const file = new File([blob], model!.fileName, { type: 'application/pdf' });
       await navigator.share({
         files: [file],
-        title: `${model!.statusLabel} Nº ${model!.number}`,
-        text: `${model!.statusLabel} Nº ${model!.number} · ${model!.vehicle.plate}`,
+        title: `${model!.typeDoc} Nº ${model!.number}`,
+        text: `${model!.typeDoc} Nº ${model!.number} · ${model!.vehicle.plate}`,
       });
     } catch (err) {
       if ((err as Error)?.name !== 'AbortError') {
@@ -105,7 +105,7 @@ export default function InvoiceScreen() {
     <div className="invoice-screen min-h-dvh bg-neutral-700">
       <div className="no-print">
         <ScreenHeader
-          title={`${model.statusLabel} Nº ${formatOrderNumber(order.data!.number)}`}
+          title={`${model.typeDoc} Nº ${formatOrderNumber(order.data!.number)}`}
           subtitle="Vista previa del documento"
           onBack={back}
         />

@@ -1,261 +1,291 @@
 import { Document, Image, Page, StyleSheet, Text, View, pdf } from '@react-pdf/renderer';
 import { formatCOP as rawCOP } from '../../utils/format';
-import { EXPIRY_LABEL, INVOICE_COLORS as C, type ExpiryState, type Field, type InvoiceModel } from './invoiceModel';
+import { INVOICE, type ExpiryState, type InvoiceModel } from './invoiceModel';
 
 // Este módulo se carga bajo demanda (import dinámico): la librería de PDF pesa bastante y solo
 // se necesita al descargar o compartir el documento.
+//
+// Réplica de la factura de Access: Courier (la métrica de Courier New), mismos colores, mismas
+// secciones y mismo orden. Las medidas están en puntos sobre una hoja Carta con márgenes de 18.
 
-const MUTED = '#6B6B6B';
-const LINE = '#E0E0E0';
+const C = INVOICE.color;
+const W = INVOICE.cols;
 
-// Las fuentes estándar de PDF (Helvetica/Courier) usan WinAnsi: se reemplazan los pocos
-// caracteres de Intl que no existen ahí (espacios finos, signo menos).
+// Las fuentes estándar de PDF (WinAnsi) no tienen espacios finos ni el signo menos de Intl.
 const clean = (s: string) => s.replace(/[  ]/g, ' ').replace(/−/g, '-');
-const cop = (n: number) => clean(rawCOP(n));
+// Access muestra los pesos sin espacio: $210.000
+const cop = (n: number) => clean(rawCOP(n)).replace(/\$\s+/, '$');
+
+const REG = 'Courier';
+const BOLD = 'Courier-Bold';
 
 const s = StyleSheet.create({
-  page: { paddingTop: 28, paddingBottom: 48, paddingHorizontal: 36, fontFamily: 'Helvetica', fontSize: 9, color: C.ink },
-  header: { flexDirection: 'row', alignItems: 'center' },
-  logo: { width: 54, height: 54, marginRight: 10 },
-  brandTop: { fontFamily: 'Helvetica-Bold', fontSize: 7.5, letterSpacing: 2.5 },
-  brandName: { fontFamily: 'Times-Bold', fontSize: 21, color: C.red, letterSpacing: 1 },
-  contact: { fontSize: 7.5, color: MUTED, marginTop: 2 },
-  docLabel: { fontFamily: 'Courier-Bold', fontSize: 7.5, letterSpacing: 1.5, color: MUTED, textAlign: 'right' },
-  docNumber: { fontFamily: 'Courier-Bold', fontSize: 21, textAlign: 'right' },
-  badge: { marginTop: 3, alignSelf: 'flex-end', paddingVertical: 2.5, paddingHorizontal: 6, fontFamily: 'Courier-Bold', fontSize: 7.5, letterSpacing: 1.2 },
-  strip: { borderTopWidth: 0.75, borderBottomWidth: 0.75, borderColor: LINE, paddingVertical: 3, marginTop: 6, alignItems: 'center' },
-  stripImg: { height: 24, width: 179 },
-  ruleRed: { height: 3, backgroundColor: C.red },
-  grid: { flexDirection: 'row', marginTop: 10 },
-  col: { flex: 1, paddingRight: 12 },
-  blockTitle: { fontFamily: 'Courier-Bold', fontSize: 7.5, letterSpacing: 1.3, color: C.red, borderBottomWidth: 1.2, borderBottomColor: C.ink, paddingBottom: 2, marginBottom: 4 },
-  name: { fontFamily: 'Helvetica-Bold', fontSize: 10.5, marginBottom: 2 },
-  fieldRow: { flexDirection: 'row', marginTop: 1.2 },
-  fieldLabel: { width: 60, color: MUTED },
-  fieldValue: { flex: 1, fontFamily: 'Helvetica-Bold' },
-  plate: { alignSelf: 'flex-start', backgroundColor: '#F6C700', borderWidth: 1.5, borderColor: '#000', paddingVertical: 1, paddingHorizontal: 5, fontFamily: 'Courier-Bold', fontSize: 11, letterSpacing: 2, marginBottom: 2 },
-  notes: { marginTop: 8, borderLeftWidth: 3, borderLeftColor: C.red, backgroundColor: '#F7F7F7', paddingVertical: 4, paddingHorizontal: 9 },
-  notesTitle: { fontFamily: 'Courier-Bold', fontSize: 7, letterSpacing: 1.5, color: MUTED, marginBottom: 2 },
-  bar: { marginTop: 11, paddingVertical: 2.5, fontFamily: 'Courier-Bold', fontSize: 9, letterSpacing: 2.5, color: '#FFF', textAlign: 'center' },
-  th: { flexDirection: 'row', paddingVertical: 3, fontFamily: 'Courier-Bold', fontSize: 7 },
-  tr: { flexDirection: 'row', paddingVertical: 1.6 },
-  cCode: { width: 34, paddingLeft: 3, fontFamily: 'Courier', fontSize: 7.5, color: MUTED },
-  cSection: { width: 72, paddingRight: 4, fontFamily: 'Helvetica-Bold', fontSize: 6.8 },
-  cType: { width: 64, paddingLeft: 3, fontSize: 7.5, color: '#555' },
-  cDesc: { flex: 1, paddingRight: 6 },
-  cQty: { width: 28, textAlign: 'center' },
-  cMoney: { width: 62, textAlign: 'right', paddingRight: 3 },
-  subtotals: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 5 },
-  alert: { width: 250, borderLeftWidth: 3, borderLeftColor: '#D97706', backgroundColor: '#FFFBEB', paddingVertical: 5, paddingHorizontal: 8 },
-  alertTitle: { fontFamily: 'Courier-Bold', fontSize: 7.5, color: '#92400E', letterSpacing: 0.8 },
-  alertText: { fontSize: 8, color: '#78350F', marginTop: 1.5 },
-  totals: { width: 210 },
-  tRow: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 0.5, borderBottomColor: LINE, paddingVertical: 3, paddingHorizontal: 5 },
-  grandWrap: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-  seal: { width: 42, height: 42, transform: 'rotate(-12deg)', opacity: 0.9, marginRight: 12 },
-  grand: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: C.ink, borderLeftWidth: 7, borderLeftColor: C.red, paddingVertical: 7, paddingHorizontal: 10 },
-  grandLabel: { fontFamily: 'Courier-Bold', fontSize: 8.5, color: '#FFF', letterSpacing: 1.2 },
-  grandValue: { fontFamily: 'Helvetica-Bold', fontSize: 16, color: '#FFF' },
-  footer: { position: 'absolute', left: 36, right: 36, bottom: 18, borderTopWidth: 0.5, borderTopColor: '#BDBDBD', paddingTop: 4, fontSize: 7, color: MUTED, textAlign: 'center' },
-  footerMono: { fontFamily: 'Courier', fontSize: 6.5, letterSpacing: 0.8, marginTop: 1 },
+  page: { paddingTop: 18, paddingBottom: 30, paddingHorizontal: 18, fontFamily: REG, fontSize: 10, color: C.text },
+  bar12: { fontFamily: BOLD, fontSize: 12, lineHeight: 1, color: '#FFF', textAlign: 'center', paddingTop: 1, paddingBottom: 0.5 },
+  center: { textAlign: 'center' },
+  box: { backgroundColor: '#FFF', height: 13, justifyContent: 'center' },
+  boxText: { textAlign: 'center', fontSize: 10, color: C.text },
+  label: { fontFamily: BOLD, fontSize: 10, color: '#FFF', textAlign: 'center', height: 14, paddingTop: 1 },
+  th: { flexDirection: 'row', backgroundColor: C.blueLight, height: 13, alignItems: 'center', marginTop: 2, marginHorizontal: 2 },
+  thText: { fontFamily: BOLD, fontSize: 10, color: '#FFF' },
+  tr: { flexDirection: 'row', marginHorizontal: 2, paddingVertical: 0.6, minHeight: 12.5 },
+  cItem: { width: W.item, paddingLeft: 1 },
+  cSection: { width: W.section, fontSize: 8, paddingTop: 0.9, paddingRight: 0.5 },
+  cDesc: { width: W.desc, paddingRight: 4 },
+  cQty: { width: W.qty, textAlign: 'center' },
+  cPrice: { width: W.price, textAlign: 'right' },
+  cTotal: { width: W.total, textAlign: 'right' },
+  cType: { width: 74, paddingLeft: 1 },
+  cDescParts: { width: 350, paddingRight: 4 },
 });
 
-function Fields({ fields }: { fields: Field[] }) {
-  return (
-    <>
-      {fields.map((f) => (
-        <View key={f.label} style={s.fieldRow}>
-          <Text style={s.fieldLabel}>{f.label}</Text>
-          <Text style={s.fieldValue}>{clean(f.value)}</Text>
-        </View>
-      ))}
-    </>
-  );
+function Labeled({ label, w, bold = true }: { label: string; w: number; bold?: boolean }) {
+  return <Text style={{ width: w, fontFamily: bold ? BOLD : REG, fontSize: 10, color: C.text, paddingTop: 1.5 }}>{label}</Text>;
 }
 
-function ExpiryLine({ label, date, state }: { label: string; date: string; state: ExpiryState }) {
-  const color = state === 'expired' ? C.red : state === 'soon' ? '#B45309' : C.ink;
+function Cell({ w, text, ml = 0, bold = false }: { w: number; text: string; ml?: number; bold?: boolean }) {
   return (
-    <View style={s.fieldRow}>
-      <Text style={s.fieldLabel}>{label} vence</Text>
-      <Text style={[s.fieldValue, { color }]}>
-        {date}
-        {state === 'expired' || state === 'soon' ? ` · ${EXPIRY_LABEL[state].toUpperCase()}` : ''}
-      </Text>
+    <View style={[s.box, { width: w, marginLeft: ml }]}>
+      <Text style={[s.boxText, bold ? { fontFamily: BOLD } : {}]}>{clean(text)}</Text>
     </View>
   );
 }
 
-function TotalRow({ label, value, strong, color, tint }: { label: string; value: string; strong?: boolean; color?: string; tint?: string }) {
+/** Columna con rótulo blanco sobre la barra oscura y valor en caja blanca (datos del cliente). */
+function Field({ w, label, value, bg }: { w: number; label: string; value: string; bg: string }) {
   return (
-    <View style={[s.tRow, tint ? { backgroundColor: tint } : {}]}>
-      <Text style={strong ? { fontFamily: 'Helvetica-Bold', color: color ?? C.ink } : { color: MUTED }}>{label}</Text>
-      <Text style={{ fontFamily: 'Helvetica-Bold', color: color ?? C.ink }}>{value}</Text>
+    <View style={{ width: w, backgroundColor: bg }}>
+      <Text style={s.label}>{label}</Text>
+      <View style={s.box}>
+        <Text style={s.boxText}>{clean(value)}</Text>
+      </View>
     </View>
   );
+}
+
+function stateColor(state: ExpiryState): string {
+  return state === 'expired' ? C.alert : state === 'soon' ? '#B45309' : C.text;
 }
 
 function InvoiceDocument({ m, origin }: { m: InvoiceModel; origin: string }) {
+  const plateCols: [string, number, string][] = [
+    ['Placa', 67, m.vehicle.plate],
+    ['Marca', 104, m.vehicle.brand],
+    ['Línea', 122, m.vehicle.line],
+    ['Modelo', 81, m.vehicle.model],
+    ['Cm3', 56, m.vehicle.cc],
+    ['SOAT', 69, m.vehicle.soat],
+    ['TECNO', 74, m.vehicle.tecno],
+  ];
+
   return (
-    <Document title={`Misión Nº ${m.number}`} author={m.business.name} subject={m.statusLabel} language="es">
+    <Document title={`Misión Nº ${m.number}`} author={m.business.name} subject={m.typeDoc} language="es">
       <Page size="LETTER" style={s.page}>
-        {/* CABECERA */}
-        <View style={s.header}>
-          <Image src={`${origin}/brand/agente.png`} style={s.logo} />
-          <View style={{ flex: 1 }}>
-            <Text style={s.brandTop}>SERVICIO SECRETO</Text>
-            <Text style={s.brandName}>MOTORCYCLES</Text>
-            {m.contactLine ? <Text style={s.contact}>{clean(m.contactLine)}</Text> : null}
+        {/* ENCABEZADO: franja oscura con el nombre, y fila de logos */}
+        <View style={{ backgroundColor: C.dark }}>
+          <Text style={s.bar12}>SERVICIO SECRETO MOTORCYCLES</Text>
+          <View style={{ flexDirection: 'row', height: 85, padding: 2, paddingTop: 2 }}>
+            <View style={{ width: 79, backgroundColor: '#FFF' }}>
+              <Image src={`${origin}/brand/sello-caja.png`} style={{ width: 79, height: 79 }} />
+            </View>
+            <View style={{ flex: 1, backgroundColor: '#FFF', marginHorizontal: 2, alignItems: 'center', justifyContent: 'center' }}>
+              <Image src={`${origin}/brand/lineas.png`} style={{ width: 372, height: 50 }} />
+            </View>
+            <View style={{ width: 79, backgroundColor: '#FFF' }}>
+              <Image src={`${origin}/brand/agente-tel.png`} style={{ width: 79, height: 79 }} />
+            </View>
           </View>
-          <View>
-            <Text style={s.docLabel}>DOCUMENTO DE MISIÓN</Text>
-            <Text style={s.docNumber}>Nº {m.number}</Text>
-            <Text style={[s.badge, m.isQuote ? { borderWidth: 1.2, borderColor: C.red, color: C.red } : { backgroundColor: C.red, color: '#FFF' }]}>
-              {m.statusLabel.toUpperCase()}
+        </View>
+
+        {/* DATOS DEL CLIENTE */}
+        <View style={{ backgroundColor: C.client, paddingBottom: 2 }}>
+          <Text style={s.bar12}>DATOS DEL CLIENTE</Text>
+          <View style={{ flexDirection: 'row', paddingHorizontal: 2, columnGap: 2 }}>
+            <Field w={85} label="Cedula" value={m.client.id} bg={C.client} />
+            <Field w={153} label="Nombre" value={m.client.firstName} bg={C.client} />
+            <Field w={157} label="Apellido" value={m.client.lastName} bg={C.client} />
+            <Field w={85} label="Nacimiento" value={m.client.birth} bg={C.client} />
+            <Field w={81} label="Teléfono" value={m.client.phone} bg={C.client} />
+          </View>
+          <View style={{ flexDirection: 'row', paddingHorizontal: 2, columnGap: 2, marginTop: 1 }}>
+            <Field w={254} label="Google ID" value={m.client.email} bg={C.client} />
+            <Field w={141} label="Instagram" value={m.client.instagram} bg={C.client} />
+            <Field w={169} label="Profesión" value={m.client.profession} bg={C.client} />
+          </View>
+        </View>
+
+        {/* DATOS DEL OBJETIVO */}
+        <View style={{ backgroundColor: C.objective }}>
+          <Text style={s.bar12}>DATOS DEL OBJETIVO</Text>
+          <View style={{ flexDirection: 'row' }}>
+            {plateCols.map(([label, w]) => (
+              <Text key={label} style={[s.label, { width: w, height: 13 }]}>
+                {label}
+              </Text>
+            ))}
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', backgroundColor: '#FFF', height: 15, paddingTop: 1 }}>
+          {plateCols.map(([label, w, value]) => (
+            <Text
+              key={label}
+              style={[
+                s.boxText,
+                { width: w, paddingTop: 1 },
+                label === 'SOAT' ? { color: stateColor(m.vehicle.soatState) } : {},
+                label === 'TECNO' ? { color: stateColor(m.vehicle.tecnoState) } : {},
+              ]}
+            >
+              {clean(value)}
             </Text>
-          </View>
-        </View>
-        <View style={s.strip}>
-          <Image src={`${origin}/brand/lineas.png`} style={s.stripImg} />
-        </View>
-        <View style={s.ruleRed} />
-
-        {/* CLIENTE / OBJETIVO / MISIÓN */}
-        <View style={s.grid}>
-          <View style={[s.col, { flex: 1.15 }]}>
-            <Text style={s.blockTitle}>DATOS DEL CLIENTE</Text>
-            <Text style={s.name}>{clean(m.client.name.toUpperCase())}</Text>
-            <Fields fields={m.client.fields} />
-          </View>
-          <View style={[s.col, { flex: 1.15 }]}>
-            <Text style={s.blockTitle}>DATOS DEL OBJETIVO</Text>
-            <Text style={s.plate}>{m.vehicle.plate}</Text>
-            {m.vehicle.title ? <Text style={[s.name, { fontSize: 9.5, marginTop: 2 }]}>{clean(m.vehicle.title.toUpperCase())}</Text> : null}
-            {m.vehicle.details ? <Text style={{ color: MUTED, marginBottom: 1 }}>{clean(m.vehicle.details)}</Text> : null}
-            {m.vehicle.soat.date ? <ExpiryLine label="SOAT" date={m.vehicle.soat.date} state={m.vehicle.soat.state} /> : null}
-            {m.vehicle.tecno.date ? <ExpiryLine label="Tecno" date={m.vehicle.tecno.date} state={m.vehicle.tecno.state} /> : null}
-          </View>
-          <View style={[s.col, { paddingRight: 0 }]}>
-            <Text style={s.blockTitle}>DOCUMENTO DE MISIÓN</Text>
-            <Fields fields={m.mission} />
-          </View>
+          ))}
         </View>
 
-        {m.initialNotes ? (
-          <View style={s.notes} wrap={false}>
-            <Text style={s.notesTitle}>OBSERVACIONES INICIALES</Text>
+        {/* DOCUMENTO DE MISIÓN */}
+        <Text style={[s.bar12, { backgroundColor: C.docBar, color: C.text, marginTop: 0 }]}>DOCUMENTO DE MISIÓN</Text>
+        <View style={{ backgroundColor: C.body, paddingTop: 2, paddingBottom: 2 }}>
+          <View style={{ flexDirection: 'row', paddingLeft: 1 }}>
+            <Labeled label="Documento" w={62} />
+            <Cell w={36} text={m.number} />
+            <Labeled label="Tipo Doc:" w={61} />
+            <Cell w={119} text={m.typeDoc} />
+            <Labeled label="Kilometraje" w={78} />
+            <Cell w={65} text={m.mission.km} />
+            <Labeled label="Servicio:" w={58} />
+            <Cell w={88} text={m.mission.service} />
+          </View>
+          <View style={{ flexDirection: 'row', paddingLeft: 3, marginTop: 1 }}>
+            <Labeled label="OBSERVACIONES INICIALES:" w={146} />
+            <View style={[s.box, { width: 424 }]}>
+              <Text style={{ fontFamily: BOLD, fontSize: 10, paddingLeft: 2 }}>{m.mission.entry}</Text>
+            </View>
+          </View>
+          <View style={{ backgroundColor: '#FFF', marginHorizontal: 2, marginTop: 1, paddingLeft: 1, minHeight: 13 }}>
             <Text>{clean(m.initialNotes)}</Text>
           </View>
-        ) : null}
+        </View>
 
-        {/* DETALLES (SERVICIOS) */}
-        {m.serviceCount > 0 ? (
-          <View>
-            <Text style={[s.bar, { backgroundColor: C.services }]} minPresenceAhead={40}>
+        {/* DETALLES DE LA MISIÓN */}
+        {m.rows.length > 0 ? (
+          <View style={{ backgroundColor: C.body, paddingTop: 0 }}>
+            <Text style={[s.bar12, { backgroundColor: C.blue, marginTop: 2 }]} minPresenceAhead={60}>
               DETALLES DE LA MISIÓN
             </Text>
-            <View style={[s.th, { color: C.services }]}>
-              <Text style={s.cCode}>ÍTEM</Text>
-              <Text style={s.cSection}>SECCIÓN</Text>
-              <Text style={s.cDesc}>DESCRIPCIÓN</Text>
-              <Text style={s.cQty}>CANT.</Text>
-              <Text style={s.cMoney}>PRECIO</Text>
-              <Text style={s.cMoney}>TOTAL</Text>
-            </View>
-            {m.serviceRows.map((l, i) => (
-              <View
-                key={i}
-                style={[
-                  s.tr,
-                  i % 2 ? { backgroundColor: C.servicesTint } : {},
-                  l.firstOfSection && i > 0 ? { borderTopWidth: 0.75, borderTopColor: '#9DB2D1' } : {},
-                ]}
-                wrap={false}
-              >
-                <Text style={s.cCode}>{l.itemCode}</Text>
-                <Text style={[s.cSection, { color: C.services }]}>{l.firstOfSection ? clean(l.section.toUpperCase()) : ''}</Text>
-                <Text style={s.cDesc}>{clean(l.description)}</Text>
-                <Text style={s.cQty}>{l.quantity}</Text>
-                <Text style={s.cMoney}>{cop(l.price)}</Text>
-                <Text style={s.cMoney}>{cop(l.quantity * l.price)}</Text>
+            <View style={{ backgroundColor: '#FFF' }}>
+              <View style={s.th}>
+                <Text style={[s.thText, s.cItem]}>Item</Text>
+                <Text style={[s.thText, s.cSection]}>Sección</Text>
+                <Text style={[s.thText, s.cDesc]}>Descripción</Text>
+                <Text style={[s.thText, s.cQty]}>Cant.</Text>
+                <Text style={[s.thText, s.cPrice]}>Precio</Text>
+                <Text style={[s.thText, s.cTotal]}>Total</Text>
               </View>
-            ))}
-            <View style={s.subtotals} wrap={false}>
-              {m.discountPct > 0 ? (
-                <View style={s.alert}>
-                  <Text style={s.alertTitle}>¡ALERTA! PAGO EN EFECTIVO</Text>
-                  <Text style={s.alertText}>Aplica un descuento especial del {m.discountPct}% sobre los servicios.</Text>
-                  {m.business.discountNote ? <Text style={[s.alertText, { fontFamily: 'Helvetica-Bold' }]}>{clean(m.business.discountNote)}</Text> : null}
+              {m.rows.map((l, i) => (
+                <View key={i} style={[s.tr, i % 2 ? { backgroundColor: C.blueRow } : {}]} wrap={false}>
+                  <Text style={s.cItem}>{l.itemCode}</Text>
+                  <Text style={s.cSection}>{clean(l.section)}</Text>
+                  <Text style={s.cDesc}>{clean(l.description)}</Text>
+                  <Text style={s.cQty}>{l.quantity}</Text>
+                  <Text style={s.cPrice}>{cop(l.price)}</Text>
+                  <Text style={s.cTotal}>{cop(l.quantity * l.price)}</Text>
                 </View>
-              ) : (
-                <View />
-              )}
-              <View style={s.totals}>
-                <TotalRow label="Subtotal de servicios" value={cop(m.totals.subtotal)} />
-                {m.discountPct > 0 ? <TotalRow label={`Descuento ${m.discountPct}%`} value={`- ${cop(m.totals.discount)}`} color={C.red} /> : null}
-                <TotalRow label="Total de servicios" value={cop(m.totals.servicesTotal)} strong color={C.services} tint={C.servicesTint} />
+              ))}
+              <View style={{ height: 3 }} />
+            </View>
+
+            {/* Subtotal / descuento / total de servicios */}
+            <View style={{ flexDirection: 'row', backgroundColor: '#FFF' }} wrap={false}>
+              <View style={{ flex: 1, justifyContent: 'center', paddingLeft: 8 }}>
+                {m.discountPct > 0 ? (
+                  <>
+                    <Text style={{ fontFamily: BOLD, fontSize: 9, color: C.dark }}>
+                      ¡ALERTA! Para pago en efectivo aplica este descuento especial =&gt;
+                    </Text>
+                    {m.business.discountNote ? (
+                      <Text style={{ fontSize: 8, color: C.dark, textAlign: 'center', marginTop: 3 }}>**{clean(m.business.discountNote)}**</Text>
+                    ) : null}
+                  </>
+                ) : null}
+              </View>
+              <View style={{ width: 205 }}>
+                <View style={{ flexDirection: 'row', backgroundColor: C.blueLight, height: 13, alignItems: 'center' }}>
+                  <Text style={{ width: 135, textAlign: 'right', fontFamily: BOLD, color: '#FFF', paddingRight: 3 }}>Subtotal de Servicios:</Text>
+                  <Text style={{ width: 70, textAlign: 'right', fontFamily: BOLD, color: '#FFF', paddingRight: 1 }}>{cop(m.totals.subtotal)}</Text>
+                </View>
+                {m.discountPct > 0 ? (
+                  <View style={{ flexDirection: 'row', backgroundColor: C.blueRow, height: 16, alignItems: 'center' }}>
+                    <Text style={{ width: 135, textAlign: 'right', fontFamily: BOLD, fontSize: 14, color: '#000', paddingRight: 3 }}>
+                      Descuento {m.discountPct}%:
+                    </Text>
+                    <Text style={{ width: 70, textAlign: 'right', fontFamily: BOLD, fontSize: 14, color: '#000', paddingRight: 1 }}>
+                      {cop(m.totals.discount)}
+                    </Text>
+                  </View>
+                ) : null}
+                <View style={{ flexDirection: 'row', backgroundColor: C.blue, height: 13, alignItems: 'center' }}>
+                  <Text style={{ width: 135, textAlign: 'right', fontFamily: BOLD, color: '#FFF', paddingRight: 3 }}>Total de Servicios:</Text>
+                  <Text style={{ width: 70, textAlign: 'right', fontFamily: BOLD, color: '#FFF', paddingRight: 1 }}>{cop(m.totals.servicesTotal)}</Text>
+                </View>
               </View>
             </View>
           </View>
         ) : null}
 
-        {/* RECURSOS */}
+        {/* RECURSOS DE LA MISIÓN */}
         {m.parts.length > 0 ? (
-          <View>
-            <Text style={[s.bar, { backgroundColor: C.parts }]} minPresenceAhead={40}>
+          <View style={{ backgroundColor: C.body }}>
+            <Text style={[s.bar12, { backgroundColor: C.green }]} minPresenceAhead={50}>
               RECURSOS DE LA MISIÓN
             </Text>
-            <View style={[s.th, { color: C.parts }]}>
-              <Text style={s.cType}>TIPO</Text>
-              <Text style={s.cDesc}>DESCRIPCIÓN</Text>
-              <Text style={s.cQty}>CANT.</Text>
-              <Text style={s.cMoney}>PRECIO</Text>
-              <Text style={s.cMoney}>TOTAL</Text>
-            </View>
-            {m.parts.map((p, i) => (
-              <View key={i} style={[s.tr, i % 2 ? { backgroundColor: C.partsTint } : {}]} wrap={false}>
-                <Text style={s.cType}>{clean(p.type)}</Text>
-                <Text style={s.cDesc}>{clean(p.description)}</Text>
-                <Text style={s.cQty}>{p.quantity}</Text>
-                <Text style={s.cMoney}>{cop(p.price)}</Text>
-                <Text style={s.cMoney}>{cop(p.quantity * p.price)}</Text>
+            <View style={{ backgroundColor: '#FFF' }}>
+              <View style={[s.th, { backgroundColor: C.greenLight }]}>
+                <Text style={[s.thText, s.cType]}>Tipo</Text>
+                <Text style={[s.thText, s.cDescParts]}>Descripción</Text>
+                <Text style={[s.thText, s.cQty]}>Cant.</Text>
+                <Text style={[s.thText, s.cPrice]}>Precio</Text>
+                <Text style={[s.thText, s.cTotal]}>Total</Text>
               </View>
-            ))}
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', borderTopWidth: 1.2, borderTopColor: C.parts }} wrap={false}>
-              <View style={s.totals}>
-                <TotalRow label="Total de recursos" value={cop(m.totals.partsTotal)} strong color={C.parts} tint={C.partsTint} />
+              {m.parts.map((p, i) => (
+                <View key={i} style={[s.tr, i % 2 ? { backgroundColor: C.greenRow } : {}]} wrap={false}>
+                  <Text style={s.cType}>{clean(p.type)}</Text>
+                  <Text style={s.cDescParts}>{clean(p.description)}</Text>
+                  <Text style={s.cQty}>{p.quantity}</Text>
+                  <Text style={s.cPrice}>{cop(p.price)}</Text>
+                  <Text style={s.cTotal}>{cop(p.quantity * p.price)}</Text>
+                </View>
+              ))}
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 3 }} wrap={false}>
+                <View style={{ flexDirection: 'row', width: 205, backgroundColor: C.greenLight, height: 13, alignItems: 'center' }}>
+                  <Text style={{ width: 135, textAlign: 'right', fontFamily: BOLD, color: '#FFF', paddingRight: 3 }}>Total de Recursos:</Text>
+                  <Text style={{ width: 70, textAlign: 'right', fontFamily: BOLD, color: '#FFF', paddingRight: 1 }}>{cop(m.totals.partsTotal)}</Text>
+                </View>
               </View>
             </View>
           </View>
         ) : null}
 
-        {m.finalNotes ? (
-          <View style={s.notes} wrap={false}>
-            <Text style={s.notesTitle}>OBSERVACIONES FINALES</Text>
+        {/* OBSERVACIONES FINALES + COSTO TOTAL */}
+        <View style={{ backgroundColor: C.body, paddingTop: 2 }} wrap={false}>
+          <View style={{ backgroundColor: '#FFF', width: 139, marginLeft: 3, height: 13, justifyContent: 'center' }}>
+            <Text style={{ fontFamily: BOLD, color: C.dark, paddingLeft: 1 }}>OBSERVACIONES FINALES:</Text>
+          </View>
+          <View style={{ backgroundColor: '#FFF', marginHorizontal: 3, marginTop: 1, minHeight: 26, paddingLeft: 1 }}>
             <Text>{clean(m.finalNotes)}</Text>
           </View>
-        ) : null}
-
-        {/* COSTO TOTAL */}
-        <View style={s.grandWrap} wrap={false}>
-          <Image src={`${origin}/brand/sello.png`} style={s.seal} />
-          <View style={s.grand}>
-            <Text style={s.grandLabel}>COSTO TOTAL DE LA MISIÓN Nº {Number(m.number)}</Text>
-            <Text style={s.grandValue}>{cop(m.totals.total)}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', height: 26, marginTop: 2 }}>
+            <Text style={{ flex: 1, textAlign: 'center', fontSize: 14, color: C.dark }}>Costo Total de la Misión No.{m.number}:</Text>
+            <Text style={{ width: 120, textAlign: 'right', fontFamily: BOLD, fontSize: 14, color: C.dark, paddingRight: 2 }}>
+              {cop(m.totals.total)}
+            </Text>
           </View>
         </View>
 
-        {m.validityNote ? <Text style={{ marginTop: 10, fontSize: 8, textAlign: 'center' }}>{m.validityNote}</Text> : null}
+        {m.validityNote ? <Text style={{ marginTop: 4, fontSize: 8, textAlign: 'center' }}>{m.validityNote}</Text> : null}
 
-        {/* PIE (se repite en cada página) */}
-        <View style={s.footer} fixed>
-          {m.business.footerNote ? <Text>{clean(m.business.footerNote)}</Text> : null}
-          {m.business.address || m.business.city ? <Text>{clean([m.business.address, m.business.city].filter(Boolean).join(', '))}</Text> : null}
+        <View style={{ position: 'absolute', left: 18, right: 18, bottom: 12 }} fixed>
           <Text
-            style={s.footerMono}
-            render={({ pageNumber, totalPages }) =>
-              clean(`${m.business.name.toUpperCase()} · MISIÓN Nº ${m.number} · GENERADO EL ${m.generatedOn} · PÁGINA ${pageNumber} DE ${totalPages}`)
-            }
+            style={{ fontSize: 7, color: '#8A8A8A', textAlign: 'center' }}
+            render={({ pageNumber, totalPages }) => `Misión Nº ${m.number} · Generado el ${m.generatedOn} · Página ${pageNumber} de ${totalPages}`}
           />
         </View>
       </Page>

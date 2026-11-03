@@ -1,262 +1,292 @@
-import type { ReactNode } from 'react';
-import { formatCOP } from '../../utils/format';
-import { EXPIRY_LABEL, INVOICE_COLORS as C, type ExpiryState, type Field, type InvoiceModel } from './invoiceModel';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { formatCOP as rawCOP } from '../../utils/format';
+import { INVOICE, type ExpiryState, type InvoiceModel } from './invoiceModel';
 
-/** Documento de misión (cotización / orden de servicio) en HTML: lo que se ve en pantalla y se imprime. */
+const C = INVOICE.color;
+const W = INVOICE.cols;
+const PAGE_W = 609; // 573 de contenido + márgenes de 18, igual que la hoja Carta del original
+const MONO = '"Courier New", Courier, monospace';
+
+// Access muestra los pesos sin espacio: $210.000
+const cop = (n: number) => rawCOP(n).replace(/\$\s+/, '$');
+
+/**
+ * Documento de misión en pantalla. Es una réplica de la factura de Access (mismo orden, colores y
+ * tipografía Courier New) dibujada a su tamaño real y escalada para ajustarse al ancho del
+ * dispositivo, así se ve igual en el celular que impreso.
+ */
 export default function InvoiceView({ m }: { m: InvoiceModel }) {
-  return (
-    <article className="invoice-paper relative mx-auto w-full max-w-[816px] overflow-hidden bg-white p-4 text-[13px] leading-snug text-neutral-900 shadow-xl sm:p-10">
-      {/* CABECERA */}
-      <header className="flex items-center gap-3 sm:gap-5">
-        <img src="/brand/agente.png" alt="" className="h-16 w-16 shrink-0 sm:h-20 sm:w-20" />
-        <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-neutral-700 sm:text-[11px]">Servicio Secreto</p>
-          <p className="font-serif text-xl font-black uppercase leading-none tracking-wide sm:text-3xl" style={{ color: C.red }}>
-            Motorcycles
-          </p>
-          {m.contactLine && <p className="mt-1 truncate text-[11px] text-neutral-500">{m.contactLine}</p>}
-        </div>
-        <div className="shrink-0 text-right">
-          <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500 sm:text-[10px]">Documento de misión</p>
-          <p className="font-mono text-2xl font-bold leading-tight sm:text-3xl">Nº {m.number}</p>
-          <span
-            className="mt-1 inline-block rounded-sm px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em]"
-            style={m.isQuote ? { border: `1.5px solid ${C.red}`, color: C.red } : { backgroundColor: C.red, color: 'white' }}
-          >
-            {m.statusLabel}
-          </span>
-        </div>
-      </header>
+  const outer = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  const [height, setHeight] = useState<number | undefined>(undefined);
 
-      <div className="mt-4 border-y border-neutral-200 py-2">
-        <img src="/brand/lineas.png" alt="Offroad · Road of City · Sportbike · Adventure · Custom" className="mx-auto h-9 w-auto opacity-80 sm:h-11" />
+  useEffect(() => {
+    const fit = () => {
+      if (!outer.current || !inner.current) return;
+      const k = Math.min(1.35, outer.current.clientWidth / PAGE_W);
+      setScale(k);
+      setHeight(inner.current.offsetHeight * k);
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    if (outer.current) ro.observe(outer.current);
+    if (inner.current) ro.observe(inner.current);
+    return () => ro.disconnect();
+  }, [m]);
+
+  return (
+    <div ref={outer} className="invoice-outer mx-auto w-full max-w-[860px]" style={{ height }}>
+      <div
+        ref={inner}
+        className="invoice-paper bg-white shadow-xl"
+        style={{ width: PAGE_W, transform: `scale(${scale})`, transformOrigin: 'top left', fontFamily: MONO, fontSize: 10, color: C.text, padding: 18 }}
+      >
+        <Header />
+        <ClientBlock m={m} />
+        <ObjectiveBlock m={m} />
+        <MissionBlock m={m} />
+        {m.rows.length > 0 && <Details m={m} />}
+        {m.parts.length > 0 && <Resources m={m} />}
+        <Closing m={m} />
+        {m.validityNote && <p style={{ marginTop: 4, fontSize: 8, textAlign: 'center' }}>{m.validityNote}</p>}
       </div>
-      <div className="h-1" style={{ backgroundColor: C.red }} />
-
-      {/* CLIENTE / OBJETIVO / MISIÓN */}
-      <div className="mt-5 grid gap-5 sm:grid-cols-[1.15fr_1.15fr_1fr]">
-        <Block title="Datos del cliente">
-          <p className="text-[15px] font-bold uppercase">{m.client.name}</p>
-          <Fields fields={m.client.fields} />
-        </Block>
-
-        <Block title="Datos del objetivo">
-          <span className="inline-block rounded-[3px] border-2 border-black bg-[#F6C700] px-2 py-px font-mono text-base font-bold tracking-[0.2em]">
-            {m.vehicle.plate}
-          </span>
-          {m.vehicle.title && <p className="mt-1 font-bold uppercase">{m.vehicle.title}</p>}
-          {m.vehicle.details && <p className="text-neutral-600">{m.vehicle.details}</p>}
-          {m.vehicle.soat.date && <Expiry label="SOAT" date={m.vehicle.soat.date} state={m.vehicle.soat.state} />}
-          {m.vehicle.tecno.date && <Expiry label="Tecno" date={m.vehicle.tecno.date} state={m.vehicle.tecno.state} />}
-        </Block>
-
-        <Block title="Documento de misión">
-          <Fields fields={m.mission} />
-        </Block>
-      </div>
-
-      {m.initialNotes && <Notes title="Observaciones iniciales">{m.initialNotes}</Notes>}
-
-      {/* DETALLES (SERVICIOS) */}
-      {m.serviceCount > 0 && (
-        <section className="mt-6">
-          <Bar color={C.services} title="Detalles de la misión" />
-          <table className="w-full border-collapse tabular-nums">
-            <thead>
-              <tr className="text-left font-mono text-[10px] uppercase tracking-wider" style={{ color: C.services }}>
-                <th className="w-14 py-1.5 pl-1 pr-2 font-bold">Ítem</th>
-                <th className="hidden w-28 py-1.5 pr-2 font-bold sm:table-cell">Sección</th>
-                <th className="py-1.5 pr-2 font-bold">Descripción</th>
-                <th className="w-10 py-1.5 pr-2 text-center font-bold">Cant.</th>
-                <th className="hidden w-24 py-1.5 pr-2 text-right font-bold sm:table-cell">Precio</th>
-                <th className="w-24 py-1.5 pr-1 text-right font-bold">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {m.serviceRows.map((l, i) => (
-                <tr
-                  key={`${l.itemCode}-${i}`}
-                  className="align-top"
-                  style={{
-                    borderTop: l.firstOfSection && i > 0 ? '1px solid #9DB2D1' : undefined,
-                    backgroundColor: i % 2 ? C.servicesTint : undefined,
-                  }}
-                >
-                  <td className="py-1 pl-1 pr-2 font-mono text-[11px] text-neutral-500">{l.itemCode}</td>
-                  <td className="hidden py-1 pr-2 text-[11px] font-semibold uppercase sm:table-cell" style={{ color: C.services }}>
-                    {l.firstOfSection ? l.section : ''}
-                  </td>
-                  <td className="py-1 pr-2">
-                    {l.description}
-                    {l.firstOfSection && <span className="block text-[10px] uppercase text-neutral-400 sm:hidden">{l.section}</span>}
-                  </td>
-                  <td className="py-1 pr-2 text-center">{l.quantity}</td>
-                  <td className="hidden py-1 pr-2 text-right sm:table-cell">{formatCOP(l.price)}</td>
-                  <td className="py-1 pr-1 text-right">{formatCOP(l.quantity * l.price)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-between">
-            {m.discountPct > 0 ? (
-              <div className="flex-1 rounded border-l-4 bg-amber-50 px-3 py-2 sm:max-w-sm" style={{ borderColor: '#D97706' }}>
-                <p className="font-mono text-[11px] font-bold uppercase tracking-wide text-amber-800">¡Alerta! Pago en efectivo</p>
-                <p className="text-[12px] text-amber-900">
-                  Aplica un descuento especial del <strong>{m.discountPct}%</strong> sobre los servicios.
-                </p>
-                {m.business.discountNote && <p className="mt-0.5 text-[11px] font-semibold text-amber-800">{m.business.discountNote}</p>}
-              </div>
-            ) : (
-              <div />
-            )}
-            <div className="w-full sm:w-72">
-              <TotalRow label="Subtotal de servicios" value={formatCOP(m.totals.subtotal)} />
-              {m.discountPct > 0 && (
-                <TotalRow label={`Descuento ${m.discountPct}%`} value={`− ${formatCOP(m.totals.discount)}`} color={C.red} />
-              )}
-              <TotalRow label="Total de servicios" value={formatCOP(m.totals.servicesTotal)} strong color={C.services} tint={C.servicesTint} />
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* RECURSOS */}
-      {m.parts.length > 0 && (
-        <section className="mt-6">
-          <Bar color={C.parts} title="Recursos de la misión" />
-          <table className="w-full border-collapse tabular-nums">
-            <thead>
-              <tr className="text-left font-mono text-[10px] uppercase tracking-wider" style={{ color: C.parts }}>
-                <th className="w-24 py-1.5 pl-1 pr-2 font-bold">Tipo</th>
-                <th className="py-1.5 pr-2 font-bold">Descripción</th>
-                <th className="w-10 py-1.5 pr-2 text-center font-bold">Cant.</th>
-                <th className="hidden w-24 py-1.5 pr-2 text-right font-bold sm:table-cell">Precio</th>
-                <th className="w-24 py-1.5 pr-1 text-right font-bold">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {m.parts.map((p, i) => (
-                <tr key={i} className="align-top" style={i % 2 ? { backgroundColor: C.partsTint } : undefined}>
-                  <td className="py-1 pl-1 pr-2 text-[11px] text-neutral-600">{p.type}</td>
-                  <td className="py-1 pr-2">{p.description}</td>
-                  <td className="py-1 pr-2 text-center">{p.quantity}</td>
-                  <td className="hidden py-1 pr-2 text-right sm:table-cell">{formatCOP(p.price)}</td>
-                  <td className="py-1 pr-1 text-right">{formatCOP(p.quantity * p.price)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="flex justify-end border-t-2" style={{ borderColor: C.parts }}>
-            <div className="w-full sm:w-72">
-              <TotalRow label="Total de recursos" value={formatCOP(m.totals.partsTotal)} strong color={C.parts} tint={C.partsTint} />
-            </div>
-          </div>
-        </section>
-      )}
-
-      {m.finalNotes && <Notes title="Observaciones finales">{m.finalNotes}</Notes>}
-
-      {/* COSTO TOTAL */}
-      <div className="mt-7 flex items-center gap-4">
-        <img src="/brand/sello.png" alt="" className="hidden h-24 w-24 -rotate-12 opacity-90 sm:block" />
-        <div className="flex flex-1 flex-col gap-1 bg-neutral-900 px-4 py-3 text-white sm:flex-row sm:items-center sm:justify-between" style={{ borderLeft: `8px solid ${C.red}` }}>
-          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] sm:text-xs">
-            Costo total de la misión Nº {Number(m.number)}
-          </span>
-          <span className="text-2xl font-bold tabular-nums">{formatCOP(m.totals.total)}</span>
-        </div>
-      </div>
-
-      {/* PIE */}
-      <footer className="mt-7 border-t border-neutral-300 pt-3 text-center text-[10.5px] text-neutral-500">
-        {m.validityNote && <p className="font-semibold text-neutral-700">{m.validityNote}</p>}
-        {m.business.footerNote && <p>{m.business.footerNote}</p>}
-        {(m.business.address || m.business.city) && <p>{[m.business.address, m.business.city].filter(Boolean).join(', ')}</p>}
-        <p className="mt-1 font-mono uppercase tracking-wider">
-          {m.business.name} · Documento generado el {m.generatedOn}
-        </p>
-      </footer>
-    </article>
-  );
-}
-
-function Block({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section>
-      <h3 className="mb-1.5 border-b-2 pb-1 font-mono text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: C.red, borderColor: C.ink }}>
-        {title}
-      </h3>
-      <div className="space-y-0.5">{children}</div>
-    </section>
-  );
-}
-
-function Fields({ fields }: { fields: Field[] }) {
-  return (
-    <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[12.5px]">
-      {fields.map((f) => (
-        <div key={f.label} className="contents">
-          <dt className="text-neutral-500">{f.label}</dt>
-          <dd className="min-w-0 break-words font-medium">{f.value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-function Expiry({ label, date, state }: { label: string; date: string; state: ExpiryState }) {
-  const color = state === 'expired' ? C.red : state === 'soon' ? '#B45309' : '#404040';
-  return (
-    <p className="text-[12px]" style={{ color }}>
-      <span className="text-neutral-500">{label} vence </span>
-      <span className="font-medium">{date}</span>
-      {(state === 'expired' || state === 'soon') && <strong className="ml-1 uppercase">· {EXPIRY_LABEL[state]}</strong>}
-    </p>
-  );
-}
-
-function Bar({ color, title }: { color: string; title: string }) {
-  return (
-    <h3 className="px-2 py-1 text-center font-mono text-[12px] font-bold uppercase tracking-[0.25em] text-white" style={{ backgroundColor: color }}>
-      {title}
-    </h3>
-  );
-}
-
-function TotalRow({
-  label,
-  value,
-  strong = false,
-  color,
-  tint,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-  color?: string;
-  tint?: string;
-}) {
-  return (
-    <div
-      className={`flex items-center justify-between border-b border-neutral-200 px-2 py-1.5 tabular-nums ${strong ? 'font-bold' : ''}`}
-      style={tint ? { backgroundColor: tint } : undefined}
-    >
-      <span className={strong ? '' : 'text-neutral-600'} style={strong && color ? { color } : undefined}>
-        {label}
-      </span>
-      <span className="font-semibold" style={color ? { color } : undefined}>
-        {value}
-      </span>
     </div>
   );
 }
 
-function Notes({ title, children }: { title: string; children: ReactNode }) {
+const bar = (bg: string, color = '#FFF'): CSSProperties => ({
+  backgroundColor: bg,
+  color,
+  fontWeight: 700,
+  fontSize: 12,
+  lineHeight: '13px',
+  textAlign: 'center',
+  padding: '0 0 1px',
+});
+
+const box: CSSProperties = { backgroundColor: '#FFF', height: 13, lineHeight: '13px', textAlign: 'center', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' };
+const label: CSSProperties = { color: '#FFF', fontWeight: 700, textAlign: 'center', height: 14, lineHeight: '14px' };
+
+function Header() {
   return (
-    <div className="mt-5 border-l-4 bg-neutral-50 px-4 py-2.5" style={{ borderColor: C.red }}>
-      <p className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">{title}</p>
-      <p className="mt-1 whitespace-pre-line">{children}</p>
+    <div style={{ backgroundColor: C.dark }}>
+      <div style={bar(C.dark)}>SERVICIO SECRETO MOTORCYCLES</div>
+      <div style={{ display: 'flex', gap: 2, padding: 2, height: 85 }}>
+        <div style={{ width: 79, backgroundColor: '#FFF' }}>
+          <img src="/brand/sello-caja.png" alt="Servicio Secreto Motorcycles" width={79} height={79} />
+        </div>
+        <div style={{ flex: 1, backgroundColor: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <img src="/brand/lineas.png" alt="Offroad · Road of City · Sportbike · Adventure · Custom" style={{ width: 372, height: 50 }} />
+        </div>
+        <div style={{ width: 79, backgroundColor: '#FFF' }}>
+          <img src="/brand/agente-tel.png" alt="+57 302 612 8712" width={79} height={79} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ w, label: l, value }: { w: number; label: string; value: string }) {
+  return (
+    <div style={{ width: w }}>
+      <div style={label}>{l}</div>
+      <div style={box}>{value}</div>
+    </div>
+  );
+}
+
+function ClientBlock({ m }: { m: InvoiceModel }) {
+  return (
+    <div style={{ backgroundColor: C.client, paddingBottom: 2 }}>
+      <div style={bar(C.client)}>DATOS DEL CLIENTE</div>
+      <div style={{ display: 'flex', gap: 2, padding: '0 2px' }}>
+        <Field w={85} label="Cedula" value={m.client.id} />
+        <Field w={153} label="Nombre" value={m.client.firstName} />
+        <Field w={157} label="Apellido" value={m.client.lastName} />
+        <Field w={85} label="Nacimiento" value={m.client.birth} />
+        <Field w={81} label="Teléfono" value={m.client.phone} />
+      </div>
+      <div style={{ display: 'flex', gap: 2, padding: '1px 2px 0' }}>
+        <Field w={254} label="Google ID" value={m.client.email} />
+        <Field w={141} label="Instagram" value={m.client.instagram} />
+        <Field w={169} label="Profesión" value={m.client.profession} />
+      </div>
+    </div>
+  );
+}
+
+const stateColor = (s: ExpiryState) => (s === 'expired' ? C.alert : s === 'soon' ? '#B45309' : C.text);
+
+function ObjectiveBlock({ m }: { m: InvoiceModel }) {
+  const cols: [string, number, string, string?][] = [
+    ['Placa', 67, m.vehicle.plate],
+    ['Marca', 104, m.vehicle.brand],
+    ['Línea', 122, m.vehicle.line],
+    ['Modelo', 81, m.vehicle.model],
+    ['Cm3', 56, m.vehicle.cc],
+    ['SOAT', 69, m.vehicle.soat, stateColor(m.vehicle.soatState)],
+    ['TECNO', 74, m.vehicle.tecno, stateColor(m.vehicle.tecnoState)],
+  ];
+  return (
+    <>
+      <div style={{ backgroundColor: C.objective }}>
+        <div style={bar(C.objective)}>DATOS DEL OBJETIVO</div>
+        <div style={{ display: 'flex' }}>
+          {cols.map(([l, w]) => (
+            <div key={l} style={{ ...label, width: w, height: 13, lineHeight: '13px' }}>
+              {l}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: 'flex', backgroundColor: '#FFF', height: 15, lineHeight: '15px' }}>
+        {cols.map(([l, w, v, color]) => (
+          <div key={l} style={{ width: w, textAlign: 'center', color: color ?? C.text }}>
+            {v}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function LabelText({ w, children }: { w: number; children: string }) {
+  return <div style={{ width: w, fontWeight: 700, lineHeight: '13px', paddingTop: 1, whiteSpace: 'nowrap' }}>{children}</div>;
+}
+
+function MissionBlock({ m }: { m: InvoiceModel }) {
+  return (
+    <>
+      <div style={bar(C.docBar, C.text)}>DOCUMENTO DE MISIÓN</div>
+      <div style={{ backgroundColor: C.body, padding: '2px 0' }}>
+        <div style={{ display: 'flex', paddingLeft: 1 }}>
+          <LabelText w={62}>Documento</LabelText>
+          <div style={{ ...box, width: 36 }}>{m.number}</div>
+          <LabelText w={61}>Tipo Doc:</LabelText>
+          <div style={{ ...box, width: 119 }}>{m.typeDoc}</div>
+          <LabelText w={78}>Kilometraje</LabelText>
+          <div style={{ ...box, width: 65 }}>{m.mission.km}</div>
+          <LabelText w={58}>Servicio:</LabelText>
+          <div style={{ ...box, width: 88 }}>{m.mission.service}</div>
+        </div>
+        <div style={{ display: 'flex', paddingLeft: 3, marginTop: 1 }}>
+          <LabelText w={146}>OBSERVACIONES INICIALES:</LabelText>
+          <div style={{ ...box, width: 424, textAlign: 'left', paddingLeft: 2, fontWeight: 700 }}>{m.mission.entry}</div>
+        </div>
+        <div style={{ backgroundColor: '#FFF', margin: '1px 2px 0', paddingLeft: 1, minHeight: 13, whiteSpace: 'pre-wrap' }}>{m.initialNotes}</div>
+      </div>
+    </>
+  );
+}
+
+function Head({ children, bg }: { children: ReactNode; bg: string }) {
+  return (
+    <div style={{ display: 'flex', backgroundColor: bg, color: '#FFF', fontWeight: 700, height: 13, lineHeight: '13px', margin: '2px 2px 0' }}>
+      {children}
+    </div>
+  );
+}
+
+const td = (w: number, extra?: CSSProperties): CSSProperties => ({ width: w, flexShrink: 0, ...extra });
+
+function SumRow({ w1, w2, bg, label: l, value, big = false, color = '#FFF' }: { w1: number; w2: number; bg: string; label: string; value: string; big?: boolean; color?: string }) {
+  return (
+    <div style={{ display: 'flex', backgroundColor: bg, color, fontWeight: 700, fontSize: big ? 14 : 10, height: big ? 16 : 13, lineHeight: big ? '16px' : '13px' }}>
+      <div style={{ width: w1, textAlign: 'right', paddingRight: 2, whiteSpace: 'nowrap' }}>{l}</div>
+      <div style={{ width: w2, textAlign: 'right', paddingRight: 1, whiteSpace: 'nowrap' }}>{value}</div>
+    </div>
+  );
+}
+
+function Details({ m }: { m: InvoiceModel }) {
+  return (
+    <div style={{ backgroundColor: C.body }}>
+      <div style={{ ...bar(C.blue), marginTop: 2 }}>DETALLES DE LA MISIÓN</div>
+      <div style={{ backgroundColor: '#FFF' }}>
+        <Head bg={C.blueLight}>
+          <div style={td(W.item, { paddingLeft: 1 })}>Item</div>
+          <div style={td(W.section)}>Sección</div>
+          <div style={td(W.desc)}>Descripción</div>
+          <div style={td(W.qty, { textAlign: 'center' })}>Cant.</div>
+          <div style={td(W.price, { textAlign: 'right' })}>Precio</div>
+          <div style={td(W.total, { textAlign: 'right' })}>Total</div>
+        </Head>
+        {m.rows.map((l, i) => (
+          <div key={i} style={{ display: 'flex', margin: '0 2px', minHeight: 12.5, lineHeight: '12.5px', backgroundColor: i % 2 ? C.blueRow : undefined }}>
+            <div style={td(W.item, { paddingLeft: 1 })}>{l.itemCode}</div>
+            <div style={td(W.section, { fontSize: 8, paddingRight: 1 })}>{l.section}</div>
+            <div style={td(W.desc, { paddingRight: 4 })}>{l.description}</div>
+            <div style={td(W.qty, { textAlign: 'center' })}>{l.quantity}</div>
+            <div style={td(W.price, { textAlign: 'right' })}>{cop(l.price)}</div>
+            <div style={td(W.total, { textAlign: 'right' })}>{cop(l.quantity * l.price)}</div>
+          </div>
+        ))}
+        <div style={{ height: 3 }} />
+      </div>
+      <div style={{ display: 'flex', backgroundColor: '#FFF' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 8, color: C.dark }}>
+          {m.discountPct > 0 && (
+            <>
+              <div style={{ fontWeight: 700, fontSize: 9 }}>¡ALERTA! Para pago en efectivo aplica este descuento especial =&gt;</div>
+              {m.business.discountNote && <div style={{ fontSize: 8, textAlign: 'center', marginTop: 3 }}>**{m.business.discountNote}**</div>}
+            </>
+          )}
+        </div>
+        <div style={{ width: 205 }}>
+          <SumRow w1={135} w2={70} bg={C.blueLight} label="Subtotal de Servicios:" value={cop(m.totals.subtotal)} />
+          {m.discountPct > 0 && (
+            <SumRow w1={135} w2={70} bg={C.blueRow} color="#000" big label={`Descuento ${m.discountPct}%:`} value={cop(m.totals.discount)} />
+          )}
+          <SumRow w1={135} w2={70} bg={C.blue} label="Total de Servicios:" value={cop(m.totals.servicesTotal)} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Resources({ m }: { m: InvoiceModel }) {
+  return (
+    <div style={{ backgroundColor: C.body }}>
+      <div style={bar(C.green)}>RECURSOS DE LA MISIÓN</div>
+      <div style={{ backgroundColor: '#FFF' }}>
+        <Head bg={C.greenLight}>
+          <div style={td(74, { paddingLeft: 1 })}>Tipo</div>
+          <div style={td(350)}>Descripción</div>
+          <div style={td(W.qty, { textAlign: 'center' })}>Cant.</div>
+          <div style={td(W.price, { textAlign: 'right' })}>Precio</div>
+          <div style={td(W.total, { textAlign: 'right' })}>Total</div>
+        </Head>
+        {m.parts.map((p, i) => (
+          <div key={i} style={{ display: 'flex', margin: '0 2px', minHeight: 12.5, lineHeight: '12.5px', backgroundColor: i % 2 ? C.greenRow : undefined }}>
+            <div style={td(74, { paddingLeft: 1 })}>{p.type}</div>
+            <div style={td(350, { paddingRight: 4 })}>{p.description}</div>
+            <div style={td(W.qty, { textAlign: 'center' })}>{p.quantity}</div>
+            <div style={td(W.price, { textAlign: 'right' })}>{cop(p.price)}</div>
+            <div style={td(W.total, { textAlign: 'right' })}>{cop(p.quantity * p.price)}</div>
+          </div>
+        ))}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 3 }}>
+          <div style={{ width: 205 }}>
+            <SumRow w1={135} w2={70} bg={C.greenLight} label="Total de Recursos:" value={cop(m.totals.partsTotal)} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Closing({ m }: { m: InvoiceModel }) {
+  return (
+    <div style={{ backgroundColor: C.body, paddingTop: 2 }}>
+      <div style={{ backgroundColor: '#FFF', width: 139, marginLeft: 3, height: 13, lineHeight: '13px', fontWeight: 700, color: C.dark, paddingLeft: 1 }}>
+        OBSERVACIONES FINALES:
+      </div>
+      <div style={{ backgroundColor: '#FFF', margin: '1px 3px 0', minHeight: 26, paddingLeft: 1, whiteSpace: 'pre-wrap' }}>{m.finalNotes}</div>
+      <div style={{ display: 'flex', alignItems: 'center', height: 26, marginTop: 2, color: C.dark, fontSize: 14 }}>
+        <div style={{ flex: 1, textAlign: 'center' }}>Costo Total de la Misión No.{m.number}:</div>
+        <div style={{ width: 120, textAlign: 'right', fontWeight: 700, paddingRight: 2 }}>{cop(m.totals.total)}</div>
+      </div>
     </div>
   );
 }

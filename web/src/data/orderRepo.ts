@@ -1,4 +1,4 @@
-import { deleteDoc, doc, runTransaction, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, runTransaction, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { orderToFirestore } from '../firestoreConverters';
 import type { Order, ServiceType, Vehicle } from '../types';
@@ -51,6 +51,7 @@ export async function createQuote(vehicle: Vehicle, userEmail: string, serviceTy
       updated_at: serverTimestamp(),
       updated_by: userEmail,
       source: 'app',
+      deleted: false,
     });
     return number;
   });
@@ -71,6 +72,25 @@ export async function saveOrder(order: Order, userEmail: string): Promise<Order>
   return next;
 }
 
-export async function deleteOrder(number: number): Promise<void> {
-  await deleteDoc(doc(db, 'orders', String(number)));
+/** "Elimina" una misión: queda en el historial y en el conteo, marcada con su razón (obligatoria). */
+export async function discardOrder(number: number, reason: string, userEmail: string): Promise<void> {
+  const clean = reason.trim();
+  if (clean.length < 5) throw new Error('Escribe la razón (mínimo 5 caracteres).');
+  await updateDoc(doc(db, 'orders', String(number)), {
+    deleted: true,
+    deleted_reason: clean,
+    deleted_by: userEmail,
+    deleted_at: serverTimestamp(),
+    updated_by: userEmail,
+    updated_at: serverTimestamp(),
+  });
+}
+
+/** Reabre una misión eliminada. Conserva la razón anterior como registro. */
+export async function reopenOrder(number: number, userEmail: string): Promise<void> {
+  await updateDoc(doc(db, 'orders', String(number)), {
+    deleted: false,
+    updated_by: userEmail,
+    updated_at: serverTimestamp(),
+  });
 }

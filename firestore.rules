@@ -88,7 +88,8 @@ service cloud.firestore {
 
     function validClient() {
       return changedKeys().hasOnly(['name', 'phone', 'email', 'address', 'city', 'profession',
-                                    'instagram', 'birth_date', 'gender'])
+                                    'instagram', 'birth_date', 'gender', 'first_name', 'last_name'])
+        && okString('first_name', 120) && okString('last_name', 120)
         && okString('name', 200) && okString('phone', 40) && okString('email', 200)
         && okString('address', 300) && okString('city', 100) && okString('profession', 100)
         && okString('instagram', 100) && okString('birth_date', 10) && okString('gender', 30);
@@ -163,7 +164,8 @@ service cloud.firestore {
                                'entry_date', 'exit_date', 'km', 'initial_notes', 'final_notes',
                                'discount_pct', 'services', 'parts', 'subtotal', 'discount',
                                'services_total', 'parts_total', 'total', 'vehicle_category',
-                               'created_at', 'created_by', 'updated_at', 'updated_by', 'source'])
+                               'created_at', 'created_by', 'updated_at', 'updated_by', 'source',
+                               'deleted', 'deleted_reason', 'deleted_at', 'deleted_by'])
         && d.number is int && d.number > 0
         && d.status in ['Cotización', 'Orden de Servicio']
         && d.vehicle_plate is string && d.vehicle_plate.size() > 0
@@ -180,7 +182,14 @@ service cloud.firestore {
         && d.services_total == d.subtotal - d.discount
         && d.total == d.services_total + d.parts_total
         && d.created_at is timestamp && d.updated_at is timestamp
-        && d.updated_by == myEmail();
+        && d.updated_by == myEmail()
+        // Las misiones nunca se borran: se "eliminan" con una razón obligatoria y se pueden reabrir.
+        && d.deleted is bool
+        && (d.deleted == false || (
+              d.get('deleted_reason', '') is string
+              && d.get('deleted_reason', '').trim().size() >= 5
+              && d.get('deleted_by', '') == myEmail()
+              && d.get('deleted_at', null) is timestamp));
     }
 
     function orderCounterAfter() {
@@ -188,23 +197,28 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow read: if isStaff() || isClientOf(resource.data.client_id);
+      // Los clientes solo ven las misiones activas (sus consultas deben filtrar deleted == false).
+      allow read: if isStaff() || (isClientOf(resource.data.client_id) && resource.data.deleted == false);
 
       // El personal solo crea el número que sigue en el contador, en la misma transacción.
       // Los admins pueden crear cualquier número (migración del historial de Access).
       allow create: if isStaff()
         && validOrder(request.resource.data)
+        && request.resource.data.deleted == false
         && orderId == string(request.resource.data.number)
         && request.resource.data.created_by == myEmail()
         && (isAdmin() || orderCounterAfter() == request.resource.data.number);
 
+      // Una misión eliminada solo admite reabrirla (deleted -> false).
       allow update: if isStaff()
         && validOrder(request.resource.data)
+        && (resource.data.get('deleted', false) == false || request.resource.data.deleted == false)
         && request.resource.data.number == resource.data.number
         && request.resource.data.created_by == resource.data.created_by
         && request.resource.data.created_at == resource.data.created_at;
 
-      allow delete: if isAdmin();
+      // No se borran documentos: el historial y el conteo se conservan (ver "deleted").
+      allow delete: if false;
     }
 
     match /counters/{name} {

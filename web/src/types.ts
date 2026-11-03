@@ -9,6 +9,10 @@ export interface Client {
   instagram: string;
   birthDate: string; // YYYY-MM-DD
   gender: string;
+  // Nombre y apellido por separado (como en Access): solo los usa el documento de misión.
+  // Si el nombre se edita a mano quedan vacíos y el documento los deduce de `name`.
+  firstName: string;
+  lastName: string;
 }
 
 export const emptyClient = (): Client => ({
@@ -22,6 +26,8 @@ export const emptyClient = (): Client => ({
   instagram: '',
   birthDate: '',
   gender: '',
+  firstName: '',
+  lastName: '',
 });
 
 export const GENDER_OPTIONS = ['MASCULINO', 'FEMENINO', 'Sin Definir'];
@@ -145,6 +151,11 @@ export interface Order extends OrderTotals {
   createdAt: Date | null;
   updatedAt: Date | null;
   source: string; // 'access' para el historial migrado
+  // Las misiones no se borran: se eliminan con una razón y se pueden reabrir.
+  deleted: boolean;
+  deletedReason: string;
+  deletedBy: string;
+  deletedAt: Date | null;
 }
 
 export interface BusinessSettings {

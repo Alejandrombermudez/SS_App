@@ -280,6 +280,7 @@ export function planWrites(plan: ImportPlan, modes: Record<CollectionKey, Import
           ...item.data,
           // Las misiones históricas quedan con su fecha de ingreso como fecha de creación.
           created_at: entry ? dateAt(entry) : SERVER_TIME,
+          deleted: false,
           created_by: email,
           updated_at: SERVER_TIME,
           updated_by: email,

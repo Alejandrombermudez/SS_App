@@ -151,6 +151,8 @@ def export(db_path: str, source_name: str) -> dict:
         clients.append({
             "id": cid,
             "name": re.sub(r"\s+", " ", f"{text(r['Nombre'])} {text(r['Apellido'])}").strip(),
+            "first_name": text(r["Nombre"]),
+            "last_name": text(r["Apellido"]),
             "phone": id_str(r["Telefono"]),
             "email": email,
             "instagram": "" if text(r["Instagram"]).lower() in PLACEHOLDER_INSTAGRAM else text(r["Instagram"]),
