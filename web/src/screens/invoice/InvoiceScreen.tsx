@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Download, Images, Printer, Share2 } from 'lucide-react';
+import { Download, Printer, Share2 } from 'lucide-react';
+import PhotosButton from '../../drive/PhotoGallery';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBusinessSettings, useClient, useOrder, useVehicle } from '../../data/hooks';
 import { CenteredMessage, ScreenHeader, Spinner } from '../../components/ui';
@@ -133,14 +134,11 @@ export default function InvoiceScreen() {
           {busy === 'download' ? <Spinner className="h-4 w-4" /> : <Download className="h-4 w-4" />} Descargar PDF
         </button>
         {order.data?.photosUrl && (
-          <a
-            href={order.data.photosUrl}
-            target="_blank"
-            rel="noreferrer"
+          <PhotosButton
+            url={order.data.photosUrl}
+            title={`Misión Nº ${formatOrderNumber(order.data.number)}`}
             className="flex items-center gap-2 rounded-md bg-white/15 px-4 py-2 text-sm font-semibold text-white"
-          >
-            <Images className="h-4 w-4" /> Ver fotos
-          </a>
+          />
         )}
         <button
           type="button"

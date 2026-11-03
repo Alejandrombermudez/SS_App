@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, Eye, Images, LogOut, MessageCircle } from 'lucide-react';
+import { ChevronRight, Eye, LogOut, MessageCircle } from 'lucide-react';
+import PhotosButton from '../../drive/PhotoGallery';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBusinessSettings, useClient, useOrdersWhere, useVehiclesOf } from '../../data/hooks';
 import { Plate, Spinner, StatusChip } from '../../components/ui';
@@ -111,14 +112,11 @@ export default function ClientPortal({ previewOf }: { previewOf?: string }) {
                       <ChevronRight className="h-4 w-4 shrink-0 text-gray-500" />
                     </button>
                     {o.photosUrl && (
-                      <a
-                        href={o.photosUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-white/10 py-2 text-sm hover:bg-white/20"
-                      >
-                        <Images className="h-4 w-4" /> Ver fotos de esta misión
-                      </a>
+                      <PhotosButton
+                        url={o.photosUrl}
+                        title={`Misión Nº ${formatOrderNumber(o.number)}`}
+                        className="mt-1 flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 py-2 text-sm hover:bg-white/20"
+                      />
                     )}
                   </li>
                 ))}
