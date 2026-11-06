@@ -121,7 +121,12 @@ describe.runIf(existsSync(EXPORT))('migración real de Access con las reglas de 
     expect(after.clientAccounts.size).toBe(new Set(exp.clients.map((c) => c.email).filter(Boolean)).size);
     // Se conservan los datos que solo existían en la app.
     expect(after.clients.get(exp.clients[0].id)).toMatchObject({ address: 'Calle 1', city: 'Bogotá', legacy: true });
-    expect(after.services.get(exp.services[0].item_code)).toMatchObject({ dependencies: ['1002'], price: exp.services[0].price });
+    // El catálogo queda como Access; el servicio de la app que ocupaba ese código se reubica.
+    const code = exp.services[0].item_code;
+    expect(after.services.get(code)).toMatchObject({ description: exp.services[0].description, price: exp.services[0].price });
+    const relocated = [...after.services.values()].find((s) => s.description === 'x');
+    expect(relocated).toMatchObject({ dependencies: ['1002'] });
+    expect(relocated!.item_code).not.toBe(code);
   });
 
   it('los totales guardados cuadran con las líneas en todas las misiones', async () => {

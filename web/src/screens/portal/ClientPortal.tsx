@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronRight, Eye, LogOut, MessageCircle } from 'lucide-react';
 import PhotosButton from '../../drive/PhotoGallery';
 import { useAuth } from '../../contexts/AuthContext';
-import { useBusinessSettings, useClient, useOrdersWhere, useVehiclesOf } from '../../data/hooks';
+import { useBusinessSettings, useClient, useClientHistory, useVehiclesOf } from '../../data/hooks';
 import { Plate, Spinner, StatusChip } from '../../components/ui';
 import InstallPrompt from '../../components/InstallPrompt';
 import type { Vehicle } from '../../types';
@@ -19,7 +19,7 @@ export default function ClientPortal({ previewOf }: { previewOf?: string }) {
   const clientId = previewOf ?? myClientId;
   const client = useClient(clientId);
   const vehicles = useVehiclesOf(clientId);
-  const orders = useOrdersWhere('client_id', clientId, true);
+  const orders = useClientHistory(clientId, vehicles.data.map((v) => v.plate));
   const business = useBusinessSettings();
 
   const firstName = (client.data?.name ?? '').split(' ')[0];
@@ -103,6 +103,9 @@ export default function ClientPortal({ previewOf }: { previewOf?: string }) {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-mono text-sm font-bold">Nº {formatOrderNumber(o.number)}</span>
                           <StatusChip status={o.status} />
+                          {o.clientId !== clientId && (
+                            <span className="rounded-full bg-sky-500/20 px-2 py-0.5 text-[11px] font-semibold text-sky-200">Dueño anterior</span>
+                          )}
                         </div>
                         <p className="mt-1 flex items-center gap-2 text-xs text-gray-400">
                           <Plate plate={o.vehiclePlate} size="sm" /> {formatDate(o.entryDate)}

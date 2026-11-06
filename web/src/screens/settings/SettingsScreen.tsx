@@ -30,6 +30,18 @@ export default function SettingsScreen() {
             </span>
             <ChevronRight className="h-4 w-4 text-gray-500" />
           </button>
+          <button
+            type="button"
+            onClick={() => navigate('/settings/missions')}
+            className="mt-2 flex w-full items-center gap-3 rounded-lg bg-[#112240] p-4 text-left hover:bg-[#15294d]"
+          >
+            <Trash2 className="h-5 w-5 shrink-0 text-red-300" />
+            <span className="flex-1">
+              <span className="block font-medium">Todas las misiones · borrar definitivamente</span>
+              <span className="block text-xs text-gray-400">Elimina misiones para siempre (distinto de Descartar)</span>
+            </span>
+            <ChevronRight className="h-4 w-4 text-gray-500" />
+          </button>
         </Section>
       </main>
     </div>

@@ -167,6 +167,53 @@ describe('portal de clientes', () => {
   });
 });
 
+describe('traslado de motos: el historial sigue a la moto', () => {
+  // La moto OTR99X (del cliente 2000, con la misión 126) se traslada al cliente 1000.
+  async function transfer() {
+    await assertSucceeds(
+      updateDoc(doc(dbAs(STAFF), 'vehicles', 'OTR99X'), {
+        client_id: '1000',
+        transfers: [{ from: '2000', to: '1000', date: '2026-11-06', by: STAFF }],
+      }),
+    );
+  }
+  const byPlate = (db: Firestore, plate: string) =>
+    getDocs(query(collection(db, 'orders'), where('vehicle_plate', '==', plate), where('deleted', '==', false)));
+
+  it('antes del traslado, el cliente no ve la moto ni sus misiones', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'orders', '126'), { number: 126, client_id: '2000', vehicle_plate: 'OTR99X', deleted: false });
+    });
+    await assertFails(byPlate(dbAs(CLIENT), 'OTR99X'));
+    await assertFails(getDoc(doc(dbAs(CLIENT), 'orders', '126')));
+  });
+
+  it('después del traslado, el nuevo dueño ve todo el historial de la moto', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'orders', '126'), { number: 126, client_id: '2000', vehicle_plate: 'OTR99X', deleted: false });
+    });
+    await transfer();
+    await assertSucceeds(getDoc(doc(dbAs(CLIENT), 'vehicles', 'OTR99X')));
+    await assertSucceeds(byPlate(dbAs(CLIENT), 'OTR99X'));
+    await assertSucceeds(getDoc(doc(dbAs(CLIENT), 'orders', '126')));
+    // Pero no puede leer los datos personales del dueño anterior.
+    await assertFails(getDoc(doc(dbAs(CLIENT), 'clients', '2000')));
+  });
+
+  it('el dueño anterior conserva sus facturas, y nadie ve motos ajenas por placa', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, 'orders', '126'), { number: 126, client_id: '2000', vehicle_plate: 'OTR99X', deleted: false });
+      await setDoc(doc(db, 'client_accounts', 'otro@gmail.com'), { client_id: '2000' });
+    });
+    await transfer();
+    const previous = dbAs('otro@gmail.com');
+    await assertSucceeds(getDocs(query(collection(previous, 'orders'), where('client_id', '==', '2000'), where('deleted', '==', false))));
+    await assertFails(byPlate(previous, 'OTR99X'));
+    await assertFails(byPlate(dbAs(CLIENT), 'ZZZ99Z'));
+  });
+});
+
 describe('personal (users)', () => {
   it('solo los admins agregan personal', async () => {
     await assertSucceeds(setDoc(doc(dbAs(OWNER), 'users', 'nuevo@gmail.com'), { role: 'staff' }));
@@ -321,7 +368,7 @@ describe('misiones (órdenes y cotizaciones)', () => {
       const ref = doc(db, 'orders', String(n));
       await assertSucceeds(updateDoc(ref, del(STAFF)));
       await assertFails(updateDoc(ref, { km: 99, updated_by: STAFF, updated_at: serverTimestamp() }));
-      await assertFails(deleteDoc(doc(dbAs(OWNER), 'orders', String(n))));
+      await assertFails(deleteDoc(doc(dbAs(STAFF), 'orders', String(n))));
       await assertSucceeds(updateDoc(doc(dbAs(OWNER), 'orders', String(n)), { deleted: false, updated_by: OWNER, updated_at: serverTimestamp() }));
       await assertSucceeds(updateDoc(ref, { km: 99, updated_by: STAFF, updated_at: serverTimestamp() }));
     });
@@ -335,6 +382,12 @@ describe('misiones (órdenes y cotizaciones)', () => {
       await assertSucceeds(getDocs(query(collection(c, 'orders'), where('client_id', '==', '1000'), where('deleted', '==', false))));
       await assertFails(getDocs(query(collection(c, 'orders'), where('client_id', '==', '1000'))));
     });
+  });
+
+  it('solo un administrador borra definitivamente una misión', async () => {
+    await assertFails(deleteDoc(doc(dbAs(STAFF), 'orders', '127')));
+    await assertFails(deleteDoc(doc(dbAs(CLIENT), 'orders', '127')));
+    await assertSucceeds(deleteDoc(doc(dbAs(OTHER_ADMIN), 'orders', '127')));
   });
 
   it('los admins migran números arbitrarios y ajustan el contador', async () => {

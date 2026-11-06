@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { deleteDoc, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { arrayUnion, deleteDoc, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { ChevronDown, FilePlus2, Send, Trash2, X } from 'lucide-react';
-import { db } from '../../firebase';
+import { auth, db } from '../../firebase';
 import { vehicleConverter } from '../../firestoreConverters';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOrdersWhere } from '../../data/hooks';
@@ -268,7 +268,17 @@ function TransferDialog({
   async function confirmTransfer() {
     if (!selectedNewOwner) return;
     setTransferring(true);
-    await updateDoc(doc(db, 'vehicles', vehicle.plate), { client_id: selectedNewOwner.id });
+    // El historial de misiones sigue a la moto (las reglas dejan que el nuevo dueño lo vea);
+    // aquí queda además el registro del traslado.
+    await updateDoc(doc(db, 'vehicles', vehicle.plate), {
+      client_id: selectedNewOwner.id,
+      transfers: arrayUnion({
+        from: vehicle.clientId,
+        to: selectedNewOwner.id,
+        date: new Date().toISOString().slice(0, 10),
+        by: auth.currentUser?.email?.toLowerCase() ?? '',
+      }),
+    });
     setTransferring(false);
     onTransferred();
   }

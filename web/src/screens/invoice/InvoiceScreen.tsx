@@ -24,18 +24,20 @@ export default function InvoiceScreen() {
   const navigate = useNavigate();
   const order = useOrder(number);
   const vehicle = useVehicle(order.data?.vehiclePlate ?? null);
-  const client = useClient(order.data?.clientId ?? null);
+  const { role, clientId: myClientId } = useAuth();
+  // Un cliente que mira una misión de su moto hecha cuando era de otro dueño no ve esos datos.
+  const maskClient = role === 'client' && !!order.data && order.data.clientId !== myClientId;
+  const client = useClient(maskClient ? null : (order.data?.clientId ?? null));
   const business = useBusinessSettings();
   const [busy, setBusy] = useState<'download' | 'share' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const shareSupported = useMemo(canShareFiles, []);
 
   const model = useMemo(
-    () => (order.data ? buildInvoice(order.data, client.data, vehicle.data, business.data) : null),
-    [order.data, client.data, vehicle.data, business.data],
+    () => (order.data ? buildInvoice(order.data, client.data, vehicle.data, business.data, new Date(), maskClient) : null),
+    [order.data, client.data, vehicle.data, business.data, maskClient],
   );
 
-  const { role } = useAuth();
   // El cliente vuelve a su portal; el personal, al editor de la misión.
   const back = () => navigate(role === 'client' ? '/' : `/orders/${id}`);
 

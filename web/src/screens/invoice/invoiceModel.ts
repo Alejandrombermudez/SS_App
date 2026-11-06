@@ -67,6 +67,8 @@ export function buildInvoice(
   vehicle: Vehicle | null,
   business: BusinessSettings,
   now = new Date(),
+  /** El cliente que mira no es quien pagó (moto comprada a otro): no se muestran sus datos. */
+  maskClient = false,
 ): InvoiceModel {
   const isQuote = order.status === 'Cotización';
   // Vigencias respecto a la fecha de ingreso de la misión.
@@ -79,16 +81,18 @@ export function buildInvoice(
     isQuote,
     typeDoc: isQuote ? 'Cotización' : 'Orden de Servicio',
     business,
-    client: {
-      id: order.clientId,
-      firstName,
-      lastName,
-      birth: formatDate(client?.birthDate ?? ''),
-      phone: client?.phone ?? '',
-      email: client?.email ?? '',
-      instagram: client?.instagram ?? '',
-      profession: client?.profession ?? '',
-    },
+    client: maskClient
+      ? { id: '', firstName: 'Propietario', lastName: 'anterior', birth: '', phone: '', email: '', instagram: '', profession: '' }
+      : {
+          id: order.clientId,
+          firstName,
+          lastName,
+          birth: formatDate(client?.birthDate ?? ''),
+          phone: client?.phone ?? '',
+          email: client?.email ?? '',
+          instagram: client?.instagram ?? '',
+          profession: client?.profession ?? '',
+        },
     vehicle: {
       plate: order.vehiclePlate,
       brand: vehicle?.brand ?? '',

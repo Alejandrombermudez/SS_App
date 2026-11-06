@@ -1,4 +1,5 @@
 import { computeTotals } from '../../utils/orderMath';
+import { planCatalog } from './catalogSync';
 
 // Formato de DB/export/ssm-export.json (tools/access-export/export_access.py).
 export interface AccessExport {
@@ -30,7 +31,7 @@ export interface AccessOrder {
   access_totals: { subtotal: number; discount: number; services_total: number; parts_total: number; total: number };
 }
 
-export type Kind = 'new' | 'update' | 'same' | 'conflict';
+export type Kind = 'new' | 'update' | 'same' | 'conflict' | 'delete';
 
 export interface PlanItem {
   id: string;
@@ -135,9 +136,8 @@ export function buildPlan(
     });
   });
 
-  const services = exp.services.map((s) =>
-    diff(s.item_code, `${s.item_code} · ${s.description}`, { ...s }, existing.services.get(s.item_code), { dependencies: [] }),
-  );
+  // Catálogo: Access manda en códigos y nombres (ver catalogSync.ts).
+  const services = planCatalog(exp.services, existing.services);
 
   const totalsFixed: ImportPlan['totalsFixed'] = [];
   const orders = exp.orders.map((o): PlanItem => {
@@ -236,6 +236,7 @@ export interface WriteOp {
   id: string | null; // null = id automático
   data: Record<string, unknown>;
   merge: boolean;
+  delete?: boolean;
 }
 
 export const COLLECTION_LABELS: Record<CollectionKey, string> = {
@@ -261,6 +262,7 @@ export function planWrites(plan: ImportPlan, modes: Record<CollectionKey, Import
     for (const item of plan[key]) {
       if (item.kind === 'new' && creates(key)) ops.push({ collection: key, id: item.id, data: item.data, merge: false });
       if (item.kind === 'update' && updates(key)) ops.push({ collection: key, id: item.id, data: item.data, merge: true });
+      if (item.kind === 'delete' && updates(key)) ops.push({ collection: key, id: item.id, data: {}, merge: false, delete: true });
     }
     groups.push([COLLECTION_LABELS[key], ops]);
   }

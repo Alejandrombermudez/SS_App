@@ -22,12 +22,12 @@ import {
   type WriteOp,
 } from './importPlan';
 
-// El catálogo se administra en la app ("Gestionar Servicios") y su numeración no coincide con la
-// de Access: por defecto no se toca. El historial no depende de él (cada línea guarda su copia).
+// Catálogo: Access manda en códigos y nombres; lo que solo existe en la app se conserva (o se
+// reubica si choca). El historial no depende del catálogo (cada línea guarda su copia).
 const DEFAULT_MODES: Record<CollectionKey, ImportMode> = {
   clients: 'all',
   vehicles: 'all',
-  services: 'none',
+  services: 'all',
   orders: 'all',
   professions: 'new',
   client_accounts: 'all',
@@ -123,7 +123,8 @@ export default function ImportScreen() {
           const batch = writeBatch(db);
           for (const op of ops.slice(i, i + size)) {
             const data = materialize(op.data, sdk);
-            if (op.merge) batch.set(refOf(op), data, { merge: true });
+            if (op.delete) batch.delete(refOf(op));
+            else if (op.merge) batch.set(refOf(op), data, { merge: true });
             else batch.set(refOf(op), data);
           }
           await batch.commit();
@@ -144,7 +145,7 @@ export default function ImportScreen() {
 
   const pending = plan
     ? COLLECTION_KEYS.reduce(
-        (n, k) => n + (modes[k] === 'none' ? 0 : count(plan[k], 'new')) + (modes[k] === 'all' ? count(plan[k], 'update') : 0),
+        (n, k) => n + (modes[k] === 'none' ? 0 : count(plan[k], 'new')) + (modes[k] === 'all' ? count(plan[k], 'update') + count(plan[k], 'delete') : 0),
         0,
       ) + (plan.counterTo !== null && modes.orders !== 'none' ? 1 : 0)
     : 0;
@@ -300,6 +301,7 @@ function CollectionRow({
   const news = count(items, 'new');
   const updates = count(items, 'update');
   const conflicts = count(items, 'conflict');
+  const deletes = count(items, 'delete');
   const interesting = items.filter((i) => i.kind !== 'same');
 
   return (
@@ -310,9 +312,10 @@ function CollectionRow({
         <span className="text-xs text-amber-200">{updates} con cambios</span>
         <span className="text-xs text-gray-400">{count(items, 'same')} iguales</span>
         {conflicts > 0 && <span className="text-xs text-red-300">{conflicts} en conflicto</span>}
+        {deletes > 0 && <span className="text-xs text-red-300">{deletes} se quitan</span>}
         <ChevronDown className={`h-4 w-4 text-gray-400 transition ${open ? 'rotate-180' : ''}`} />
       </button>
-      {(news > 0 || updates > 0) && (
+      {(news > 0 || updates > 0 || deletes > 0) && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {(
             [
@@ -321,7 +324,7 @@ function CollectionRow({
               ['all', 'Nuevos y cambios'],
             ] as [ImportMode, string][]
           )
-            .filter(([m]) => m !== 'all' || updates > 0)
+            .filter(([m]) => m !== 'all' || updates > 0 || deletes > 0)
             .map(([m, text]) => (
               <button
                 key={m}
@@ -344,7 +347,7 @@ function CollectionRow({
               <span
                 className={`shrink-0 ${i.kind === 'new' ? 'text-emerald-300' : i.kind === 'update' ? 'text-amber-200' : 'text-red-300'}`}
               >
-                {i.kind === 'new' ? 'Nuevo' : i.kind === 'update' ? 'Cambia' : 'Conflicto'}
+                {i.kind === 'new' ? 'Nuevo' : i.kind === 'update' ? 'Cambia' : i.kind === 'delete' ? 'Se quita' : 'Conflicto'}
               </span>
               <span className="min-w-0 truncate text-gray-300">
                 {i.label}

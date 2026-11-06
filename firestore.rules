@@ -53,6 +53,12 @@ service cloud.firestore {
       return isClientAccount() && get(myClientPath()).data.client_id == clientId;
     }
 
+    // El cliente es hoy el dueño de la moto: ve todo su historial, también el de dueños anteriores.
+    function ownsVehicle(plate) {
+      return isClientAccount()
+        && get(/databases/$(database)/documents/vehicles/$(plate)).data.client_id == get(myClientPath()).data.client_id;
+    }
+
     // ---------- Validación de campos ----------
 
     // Campos que cambian en esta escritura. En create son todos; en update solo los modificados,
@@ -118,7 +124,8 @@ service cloud.firestore {
 
     function validVehicle() {
       return changedKeys().hasOnly(['brand', 'line', 'model', 'color', 'cc', 'category', 'km',
-                                    'soat_date', 'tecno_date', 'client_id', 'license_image'])
+                                    'soat_date', 'tecno_date', 'client_id', 'license_image', 'transfers'])
+        && (!('transfers' in changedKeys()) || (request.resource.data.transfers is list && request.resource.data.transfers.size() <= 100))
         && okString('brand', 60) && okString('line', 100) && okString('model', 10)
         && okString('color', 60) && okString('cc', 10) && okString('km', 12)
         && okString('soat_date', 10) && okString('tecno_date', 10)
@@ -201,7 +208,10 @@ service cloud.firestore {
 
     match /orders/{orderId} {
       // Los clientes solo ven las misiones activas (sus consultas deben filtrar deleted == false).
-      allow read: if isStaff() || (isClientOf(resource.data.client_id) && resource.data.deleted == false);
+      // Ven la misión quien la pagó (sus facturas, aunque luego vendiera la moto) y quien es hoy el
+      // dueño de la moto (el historial sigue a la moto).
+      allow read: if isStaff() || (resource.data.deleted == false
+        && (isClientOf(resource.data.client_id) || ownsVehicle(resource.data.vehicle_plate)));
 
       // El personal solo crea el número que sigue en el contador, en la misma transacción.
       // Los admins pueden crear cualquier número (migración del historial de Access).
@@ -220,8 +230,9 @@ service cloud.firestore {
         && request.resource.data.created_by == resource.data.created_by
         && request.resource.data.created_at == resource.data.created_at;
 
-      // No se borran documentos: el historial y el conteo se conservan (ver "deleted").
-      allow delete: if false;
+      // El día a día usa "deleted" (descartar / reabrir). Borrar definitivamente es solo para
+      // administradores, desde Configuración. El contador no retrocede: el número no se reutiliza.
+      allow delete: if isAdmin();
     }
 
     match /counters/{name} {

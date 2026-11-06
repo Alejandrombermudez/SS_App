@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, FilePlus2, LogOut, Settings, Users, Wrench } from 'lucide-react';
+import { ClipboardList, FilePlus2, LogOut, Settings, TrendingUp, Users, Wrench } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import InstallPrompt from '../components/InstallPrompt';
 
@@ -44,6 +44,9 @@ export default function MainMenu() {
           <>
             <MenuButton icon={<Wrench className="h-5 w-5" />} onClick={() => navigate('/services')}>
               Gestionar servicios
+            </MenuButton>
+            <MenuButton icon={<TrendingUp className="h-5 w-5" />} onClick={() => navigate('/finanzas')}>
+              Finanzas
             </MenuButton>
             <MenuButton icon={<Settings className="h-5 w-5" />} onClick={() => navigate('/settings')}>
               Configuración

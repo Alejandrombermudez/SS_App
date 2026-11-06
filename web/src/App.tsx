@@ -17,6 +17,8 @@ const AdminServicesScreen = lazy(() => import('./screens/AdminServicesScreen'));
 const InvoiceScreen = lazy(() => import('./screens/invoice/InvoiceScreen'));
 const SettingsScreen = lazy(() => import('./screens/settings/SettingsScreen'));
 const ImportScreen = lazy(() => import('./screens/settings/ImportScreen'));
+const PurgeOrdersScreen = lazy(() => import('./screens/settings/PurgeOrdersScreen'));
+const FinanceScreen = lazy(() => import('./screens/finance/FinanceScreen'));
 
 const staff = (el: ReactNode) => <ProtectedRoute>{el}</ProtectedRoute>;
 const admin = (el: ReactNode) => <AdminRoute>{el}</AdminRoute>;
@@ -38,6 +40,8 @@ export default function App() {
             <Route path="/services" element={admin(<AdminServicesScreen />)} />
             <Route path="/settings" element={admin(<SettingsScreen />)} />
             <Route path="/settings/import" element={admin(<ImportScreen />)} />
+            <Route path="/settings/missions" element={admin(<PurgeOrdersScreen />)} />
+            <Route path="/finanzas" element={admin(<FinanceScreen />)} />
           </Routes>
         </Suspense>
       </AuthProvider>

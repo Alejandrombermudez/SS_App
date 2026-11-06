@@ -120,6 +120,56 @@ export function useOrdersWhere(
   return state;
 }
 
+/**
+ * Historial del portal: las misiones a nombre del cliente (incluye motos que ya vendió, porque
+ * fueron sus facturas) + todas las misiones de las motos que tiene hoy (incluye las de dueños
+ * anteriores, porque el historial sigue a la moto). Solo activas, de la más reciente a la más antigua.
+ */
+export function useClientHistory(clientId: string | null, plates: string[]): Loadable<Order[]> {
+  const [own, setOwn] = useState<Loadable<Order[]>>({ data: [], loading: !!clientId, error: null });
+  const [byPlate, setByPlate] = useState<Record<string, Order[]>>({});
+  const [pending, setPending] = useState(0);
+  const platesKey = [...plates].sort().join('|');
+
+  useEffect(() => {
+    if (!clientId) {
+      setOwn({ data: [], loading: false, error: null });
+      return;
+    }
+    return onSnapshot(
+      query(collection(db, 'orders'), where('client_id', '==', clientId), where('deleted', '==', false)),
+      (snap) => setOwn({ data: snap.docs.map((d) => orderFromData(d.id, d.data())), loading: false, error: null }),
+      (err) => setOwn({ data: [], loading: false, error: describe(err) }),
+    );
+  }, [clientId]);
+
+  useEffect(() => {
+    const list = platesKey ? platesKey.split('|') : [];
+    setByPlate({});
+    setPending(list.length);
+    const unsubs = list.map((plate) =>
+      onSnapshot(
+        query(collection(db, 'orders'), where('vehicle_plate', '==', plate), where('deleted', '==', false)),
+        (snap) => {
+          setByPlate((prev) => ({ ...prev, [plate]: snap.docs.map((d) => orderFromData(d.id, d.data())) }));
+          setPending((n) => Math.max(0, n - 1));
+        },
+        () => setPending((n) => Math.max(0, n - 1)),
+      ),
+    );
+    return () => unsubs.forEach((u) => u());
+  }, [platesKey]);
+
+  const merged = new Map<number, Order>();
+  for (const o of own.data) merged.set(o.number, o);
+  for (const list of Object.values(byPlate)) for (const o of list) merged.set(o.number, o);
+  return {
+    data: [...merged.values()].sort((a, b) => b.number - a.number),
+    loading: own.loading || pending > 0,
+    error: own.error,
+  };
+}
+
 export function useVehiclesOf(clientId: string | null): Loadable<Vehicle[]> {
   const [state, setState] = useState<Loadable<Vehicle[]>>({ data: [], loading: !!clientId, error: null });
   useEffect(() => {
