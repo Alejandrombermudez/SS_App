@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, doc, getDoc, getDocs, serverTimestamp, Timestamp, writeBatch } from 'firebase/firestore';
 import { AlertTriangle, CheckCircle2, ChevronDown, FileUp } from 'lucide-react';
@@ -43,6 +43,9 @@ export default function ImportScreen() {
   const [exp, setExp] = useState<AccessExport | null>(null);
   const [plan, setPlan] = useState<ImportPlan | null>(null);
   const [modes, setModes] = useState(DEFAULT_MODES);
+  // Catálogo idéntico a Access (quita los servicios que solo existen en la app).
+  const [catalogExact, setCatalogExact] = useState(true);
+  const lastData = useRef<AccessExport | null>(null);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [result, setResult] = useState<string[]>([]);
 
@@ -55,6 +58,7 @@ export default function ImportScreen() {
       return;
     }
     setExp(data);
+    lastData.current = data;
     setStage('analyzing');
     try {
       const [clients, vehicles, services, orders, professions, accounts, counter] = await Promise.all([
@@ -76,7 +80,7 @@ export default function ImportScreen() {
           professions: new Set(professions.docs.map((d) => String(d.data().name ?? '').trim().toLowerCase())),
           clientAccounts: toMap(accounts),
           counter: Number(counter.data()?.last) || 0,
-        }),
+        }, { catalogExact }),
       );
       setStage('ready');
     } catch (err) {
@@ -85,6 +89,12 @@ export default function ImportScreen() {
       setMessage('No se pudo leer Firestore para comparar. ¿Tienes permisos de administrador?');
     }
   }
+
+  // Al cambiar la opción del catálogo se recalcula la vista previa.
+  useEffect(() => {
+    if (lastData.current && (stage === 'ready' || stage === 'error')) void load(lastData.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogExact]);
 
   async function loadFile(file: File) {
     try {
@@ -199,6 +209,19 @@ export default function ImportScreen() {
         {plan && exp && stage !== 'analyzing' && (
           <>
             <Section title="2. Vista previa">
+              <label className="mb-2 flex items-start gap-2 rounded-lg bg-[#112240] p-3 text-xs text-gray-200">
+                <input
+                  type="checkbox"
+                  checked={catalogExact}
+                  disabled={stage === 'importing'}
+                  onChange={(e) => setCatalogExact(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <strong>Catálogo idéntico a Access.</strong> Quita los servicios que solo existen en la app (no afecta
+                  el historial: cada misión guarda su propia copia de los servicios).
+                </span>
+              </label>
               <div className="space-y-2">
                 {COLLECTION_KEYS.map((k) => (
                   <CollectionRow

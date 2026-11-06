@@ -62,6 +62,24 @@ describe('planCatalog: Access manda en códigos y nombres', () => {
     for (const i of items) expect(Object.keys(i.data)).not.toContain('id');
   });
 
+  it('modo idéntico a Access: quita lo que solo existe en la app y no reubica nada', () => {
+    const items = planCatalog(
+      access,
+      app([
+        ['5001', { item_code: '5001', section: 'Frenos', description: 'Revisión/Cambio Bandas' }],
+        ['9016', { item_code: '9016', section: 'Sistema Eléctrico', description: 'Alarma' }],
+        ['5009', { item_code: '5009', section: 'Frenos', description: 'Ajuste de Recorrido Pedal', dependencies: ['9016'] }],
+      ]),
+      true,
+    );
+    expect(items.find((i) => i.id === '9016')).toMatchObject({ kind: 'delete' });
+    expect(items.find((i) => i.id === '5009')).toMatchObject({ kind: 'delete' });
+    expect(items.some((i) => i.id === '5003')).toBe(false);
+    expect(items.filter((i) => i.kind !== 'delete').map((i) => i.id).sort()).toEqual(['5001', '5002', '9001']);
+    // La dependencia apuntaba a un servicio que se quita: no queda colgando.
+    expect(items.find((i) => i.id === '5002')!.data.dependencies).toEqual([]);
+  });
+
   it('una segunda sincronización no cambia nada', () => {
     const first = planCatalog(access, app([['5001', { item_code: '5001', section: 'Frenos', description: 'Revisión/Cambio Bandas' }]]));
     const after = new Map(first.filter((i) => i.kind !== 'delete').map((i) => [i.id, i.data]));

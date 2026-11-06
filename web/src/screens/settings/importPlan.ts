@@ -119,6 +119,7 @@ export function buildPlan(
     clientAccounts: Existing;
     counter: number;
   },
+  options: { catalogExact?: boolean } = {},
 ): ImportPlan {
   const clients = exp.clients.map((c) => {
     const { id, ...fields } = c;
@@ -137,7 +138,7 @@ export function buildPlan(
   });
 
   // Catálogo: Access manda en códigos y nombres (ver catalogSync.ts).
-  const services = planCatalog(exp.services, existing.services);
+  const services = planCatalog(exp.services, existing.services, options.catalogExact ?? false);
 
   const totalsFixed: ImportPlan['totalsFixed'] = [];
   const orders = exp.orders.map((o): PlanItem => {

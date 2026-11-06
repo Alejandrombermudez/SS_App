@@ -63,7 +63,11 @@ const stable = (v: unknown): string =>
           .join(',')}}`
       : JSON.stringify(v ?? '');
 
-export function planCatalog(access: AccessService[], existing: Map<string, Doc>): PlanItem[] {
+/**
+ * @param exact true = el catálogo queda IDÉNTICO a Access: lo que solo existe en la app se quita
+ *   (ningún historial depende del catálogo: cada línea de misión guarda su propia copia).
+ */
+export function planCatalog(access: AccessService[], existing: Map<string, Doc>, exact = false): PlanItem[] {
   const accessCodes = new Set(access.map((s) => s.item_code));
   const accessByDesc = new Map(access.map((s) => [normDesc(s.description), s.item_code]));
 
@@ -108,7 +112,8 @@ export function planCatalog(access: AccessService[], existing: Map<string, Doc>)
 
   const fixDeps = (deps: unknown): string[] => {
     const list = Array.isArray(deps) ? (deps as string[]) : [];
-    return [...new Set(list.map((d) => remap.get(d) ?? d))].filter((d) => used.has(d));
+    // En modo idéntico solo sobreviven dependencias hacia servicios de Access.
+    return [...new Set(list.map((d) => remap.get(d) ?? d))].filter((d) => (exact ? accessCodes : used).has(d));
   };
 
   const items: PlanItem[] = [];
@@ -137,6 +142,20 @@ export function planCatalog(access: AccessService[], existing: Map<string, Doc>)
     // escriben completos (no es un "cambio" del mismo servicio).
     const moved = relocated.find((r) => r.from === s.item_code);
     push(s.item_code, `${s.item_code} · ${s.description}`, data, moved ? `El servicio de la app que estaba aquí pasa al ${moved.to}` : undefined);
+  }
+
+  if (exact) {
+    // Los que solo existen en la app: se quitan (los reubicados ni se crean; su código viejo ya
+    // lo ocupa el servicio de Access).
+    for (const { code, doc } of keptAppOnly) {
+      items.push({ id: code, label: `${code} · ${doc.description}`, kind: 'delete', changes: [], data: {}, note: 'No existe en Access' });
+    }
+    for (const [code, to] of remap) {
+      if (to !== code && !accessCodes.has(code)) {
+        items.push({ id: code, label: `${code} · ${existing.get(code)!.description}`, kind: 'delete', changes: [], data: {}, note: `Pasa al código ${to} de Access` });
+      }
+    }
+    return items;
   }
 
   for (const { code, doc } of keptAppOnly) {
