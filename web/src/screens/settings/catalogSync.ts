@@ -47,6 +47,10 @@ export const normDesc = (t: unknown) =>
     .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]/g, '');
 
+// Solo los campos que permiten las reglas (la app Android guardaba además un campo "id").
+const FIELDS = ['item_code', 'section', 'description', 'cost_type', 'price', 'service_group', 'dependencies'];
+const pick = (doc: Doc): Doc => Object.fromEntries(FIELDS.filter((k) => k in doc).map((k) => [k, doc[k]]));
+
 const rangeOf = (code: string) => Math.floor((Number.parseInt(code, 10) || 0) / 1000) * 1000;
 
 const stable = (v: unknown): string =>
@@ -137,7 +141,7 @@ export function planCatalog(access: AccessService[], existing: Map<string, Doc>)
 
   for (const { code, doc } of keptAppOnly) {
     const section = ACCESS_SECTIONS[rangeOf(code)] ?? String(doc.section ?? '');
-    push(code, `${code} · ${doc.description}`, { ...doc, item_code: code, section, dependencies: fixDeps(doc.dependencies) }, 'Solo existe en la app: se conserva');
+    push(code, `${code} · ${doc.description}`, { ...pick(doc), item_code: code, section, dependencies: fixDeps(doc.dependencies) }, 'Solo existe en la app: se conserva');
   }
 
   for (const { from, to, doc } of relocated) {
@@ -147,7 +151,7 @@ export function planCatalog(access: AccessService[], existing: Map<string, Doc>)
       label: `${to} · ${doc.description}`,
       kind: 'new',
       changes: [],
-      data: { ...doc, item_code: to, section, dependencies: fixDeps(doc.dependencies) },
+      data: { ...pick(doc), item_code: to, section, dependencies: fixDeps(doc.dependencies) },
       note: `Reubicado desde el ${from} (ese código es de otro servicio en Access)`,
     });
   }

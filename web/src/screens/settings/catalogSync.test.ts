@@ -57,6 +57,11 @@ describe('planCatalog: Access manda en códigos y nombres', () => {
     expect(items.find((i) => i.id === '9016')!.data.dependencies).toEqual(['5003']);
   });
 
+  it('no copia campos que no permiten las reglas (el "id" que guardaba la app Android)', () => {
+    const items = planCatalog(access, app([['5001', { id: 'x', item_code: '5001', section: 'Frenos', description: 'Revisión/Cambio Bandas' }], ['9016', { id: 'y', item_code: '9016', section: 'Sistema Eléctrico', description: 'Alarma' }]]));
+    for (const i of items) expect(Object.keys(i.data)).not.toContain('id');
+  });
+
   it('una segunda sincronización no cambia nada', () => {
     const first = planCatalog(access, app([['5001', { item_code: '5001', section: 'Frenos', description: 'Revisión/Cambio Bandas' }]]));
     const after = new Map(first.filter((i) => i.kind !== 'delete').map((i) => [i.id, i.data]));

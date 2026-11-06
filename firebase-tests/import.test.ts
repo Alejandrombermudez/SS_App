@@ -73,7 +73,7 @@ describe.runIf(existsSync(EXPORT))('migración real de Access con las reglas de 
       const c = exp.clients[0];
       await setDoc(doc(db, 'clients', c.id), { name: 'Nombre viejo', phone: '', email: '', address: 'Calle 1', city: 'Bogotá', profession: '', legacy: true });
       const s = exp.services[0];
-      await setDoc(doc(db, 'services', s.item_code), { item_code: s.item_code, section: s.section, description: 'x', cost_type: s.cost_type, price: 1, service_group: s.service_group, dependencies: ['1002'] });
+      await setDoc(doc(db, 'services', s.item_code), { id: s.item_code, item_code: s.item_code, section: s.section, description: 'x', cost_type: s.cost_type, price: 1, service_group: s.service_group, dependencies: ['1002'] });
       await setDoc(doc(db, 'users', STAFF), { role: 'staff' });
     });
   });
